@@ -1,0 +1,6 @@
+[package]
+name = "nnrs"
+version = "0.1.0"
+authors = ["Vadim Borodin <borodin.vadim@gmail.com>"]
+
+[dependencies]
