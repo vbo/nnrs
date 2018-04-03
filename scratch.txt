@@ -1,0 +1,168 @@
+BATCH_SIZE = 3
+N_INPUTS = 4
+N_L1 = 2
+
+AP0    A0 = AP0*W00 + AP1*W01 + AP2*W02
+AP1    A1 = AP0*W10 + AP1*W11 + AP2*W12
+AP2    A2 = AP0*W20 + AP1*W21 + AP2*W22
+
+AP00 AP01 AP02 AP03         W00 W01      (AP00*W00 + AP01*W10 + AP02*W20)
+AP10 AP11 AP12 AP13         W10 W11 
+AP20 AP21 AP22 AP23         W20 W21
+                            W30 W31
+
+     A[i] = SUM(W[i, j]*A)
+
+
+    Dim check: <BATCH_SIZE, N_INPUTS> * <N_INPUTS, N_L1> = <BATCH_SIZE, N_L1>
+
+
+y = 1/x
+
+z = 1/x(t, b) + 2/x
+
+y = f(g(x))
+y' = f'(g(x))*g'(x)
+
+y = f(a, b)
+grad(y) = df/da*df/db
+
+cost = cost(AP, W)
+
+grad(cost) = dCost/dAP*dCost/dW
+
+cost = square(a(AP, W) - y)
+
+dCost/dAP = 2*(a(AP,W) - y)*da(AP,W)/dAP
+a(AP, W) = sigmoid(SUM(W*AP))
+da/dAP = sigmoid(SUM(W*AP))*SUM(W)
+
+dCost/dAP = 2*(a(AP,W) - y)*a(AP,W)*SUM(W)
+
+dCost/dW = 2*(a(AP,W) - y)*da/dW
+da/dW = a(AP,W)*SUM(AP)
+
+dCost/dW = 2*(a(AP,W) - y)*a(AP,W)*SUM(AP)
+
+
+
+
+
+
+sample_error = square(a(AP, W) - y)
+cost = per_col_sum(sample_error)/BATCH_SIZE
+
+
+
+
+cost = PCS(square(a - y))/BATCH_SIZE
+a = sigmoid(SUM(AP*W))
+
+BATCH_SIZE=3, N_OUTPUTS=2
+
+A = 
+A00 A01
+A10 A11
+A20 A21
+
+A - Y =
+A00 - Y00   A01 - Y01
+A10 - Y10   A11 - Y11
+A20 - Y20   A21 - Y21
+
+(A-Y)^t
+A00 - Y00 A10 - Y10 A20 - Y20
+A01 - Y01 A11 - Y11 A21 - Y21
+
+sq(A-Y) = 
+(A00 - Y00)^2  (A01 - Y01)^2
+(A10 - Y10)^2  (A11 - Y11)^2
+(A20 - Y20)^2  (A21 - Y21)^2
+
+PCS(sq(A-Y))/BS
+((A00 - Y00)^2 + (A10 - Y10)^2 + (A20 - Y20)^2)/BS ;;; ((A01 - Y01)^2 + (A11 - Y11)^2 + (A21 - Y21)^2)/BS
+
+
+((A00 - Y00)^2 + (A10 - Y10)^2 + (A20 - Y20)^2)/BS
+
+' = /dAP
+1/BS*(2(A00 - Y00)*A00' + 2(A10 - Y10)*A10' + 2*(A20 - Y20)*A20') = 
+1/BS*(2(A00 - Y00)*A00*SUM(Wi0) + 2(A10 - Y10)*A10*SUM(Wi1) + 2*(A20 - Y20)*A20*SUM(Wi2))
+2/BS*((A00 - Y00)*A00*SUM(Wi0) + (A10 - Y10)*A10*SUM(Wi1) + (A20 - Y20)*A20*SUM(Wi2))
+
+TODO: how to represent PCS(sq(A-Y))/BS as linear algebra? :!)
+
+
+(A - Y)  - <BATCH_SIZE, N_OUTPUTS>
+
+A00*SUM(Wi0)
+A10*SUM(Wi1)
+A20*SUM(Wi2)
+
+A00 = sigmoid(SUM(Wi0*AP0i))
+k - example index
+l - neuron index
+
+Akl = sigmoid(SUM(Wil*APki))
+
+dAkl/dAP = Akl*SUM(Wil)
+
+
+
+
+' = /dW
+1/BS*(2(A00 - Y00)*A00' + 2(A10 - Y10)*A10' + 2*(A20 - Y20)*A20') = 
+
+
+
+
+
+dCost/dAP = PCS(2*(a - y))*(XXXXXXXXX)/BATCH_SIZE
+
+2*(a(AP,W) - y)*da(AP,W)/dAP
+
+
+
+a(AP, W) = sigmoid(SUM(W*AP))
+da/dAP = sigmoid(SUM(W*AP))*SUM(W)
+
+dCost/dAP = 2*(a(AP,W) - y)*a(AP,W)*SUM(W)
+
+dCost/dW = 2*(a(AP,W) - y)*da/dW
+da/dW = a(AP,W)*SUM(AP)
+
+dCost/dW = 2*(a(AP,W) - y)*a(AP,W)*SUM(AP)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

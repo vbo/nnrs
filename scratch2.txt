@@ -1,0 +1,30 @@
+
+
+
+
+outputs = vector<N_OUTPUTS>
+true_outputs = vector<N_OUTPUTS>
+
+error = vector<N_OUTPUTS>
+cost  = vector<N_OUTPUTS>
+
+output[k] = sigmoid(SUM(Wik*APi))
+
+error[k] = (outputs[k] - true_outputs[k])^2
+
+
+dError[k]/dW[l] = 2*(output[k] - true_outputs[k])*output[k]*W[l,k]
+
+
+
+
+dError[k]/dW[l] = 2*(output[k] - true_outputs[k])*output[k]*W[l,k]
+
+
+
+
+
+
+<BATCH_SIZE, N_L2>^t * <BATCH_SIZE, N_OUTPUTS> != <N_L2, N_OUTPUTS>
+
+
