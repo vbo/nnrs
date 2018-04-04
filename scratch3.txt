@@ -1,0 +1,80 @@
+
+
+
+
+    EB = 1/BATCH_SIZE*SUM((out - t_out)^2)
+
+    dEB/dW = 1/BATCH_SIZE*SUM(d((out - t_out)^2)/dW)
+
+    dES/dW <- d((out - t_out)^2)/dW
+
+    dEB/dW = 1/BATCH_SIZE*SUM(dES/dW)
+
+    # so first compute dES/dW, then average
+
+foreach:
+    ES0 = (outs0 - t_outs0)^2
+
+    dES0/dW00 = dES0/dOuts0*dOuts0/dW00
+
+    Outs0(W00) = sigmoid(ap0*W00 + ap1*W10 + ap2*W20...)
+
+    dES0/dOuts0 = 2*(outs0 - t_outs0)
+
+    dOuts0/dW00 = sigmoid(...)*(1-sigmoid(...))*ap0
+
+    foreach i=0..N_OUTPUTS:
+        foreach j=0..N_L2:
+            dES[i]/dW[j][i] = 2*(outs[i] - t_outs[i]) * sigmoid(...)*(1-sigmoid(...)) * ap[j]
+                      = 2*(outs[i] - t_outs[i]) * OUTS[i] * (1 - OUTS[i]) * ap[j]
+
+
+
+BACKUP:
+
+    dES/dW = dES/dOuts*dOuts/dW
+
+    Outs(W) = sigmoid(SUM(W*outs2))
+
+    dES/dOuts = 2*(outs - t_outs)
+    dOuts/dW = sigmoid(SUM(W*outs2))*(1-sigmoid(SUM(W*outs2)))*SUM(d(W*outs2)/dW)
+             = OUTS*(1-OUTS)*d(SUM(W*outs2))/dW
+
+
+    SUM(d(W*outs2)/dW) =
+        outs2[0]*W[0, 0] + outs2[0]*W[1, 0] + ...
+        outs2[1]*W[0, 1] + outs2[0]*W[1, 1] + ...
+        ...
+        outs2[N_L2]*W[0, N_L2] + outs2[N_L2]*W[1, N_L2] + ...
+
+    y = sin(2x)
+      = -cos(2x)*2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    dES/dW == d((out(l2_out, out_w) - t_out)^2)/dW
+
+    dES/dW = dES/dL2Out*dOut/dW
+
+    dES/dOut = ...
+
+    dOut/dW = ...

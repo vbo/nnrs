@@ -55,7 +55,7 @@ error = per_col_sum(square(outputs - true_outputs))/BATCH_SIZE
 regularization = sum_square_each(l1_weights, l2_weights, outputs_weights) 
 cost = error + reg_coeff*regularization
 
-# backward run
+# backward run  HADAMARD PRODUCT!!!
 outputs_weight_correction = 2*l2_activations.T*(outputs - true_outputs)*outputs
 #TODO: check this makes sense!
 
