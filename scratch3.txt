@@ -17,18 +17,37 @@ foreach:
 
     dES0/dW00 = dES0/dOuts0*dOuts0/dW00
 
+    dES0/dAP0 = dES0/dOuts0*dOuts0/dAP0
+
     Outs0(W00) = sigmoid(ap0*W00 + ap1*W10 + ap2*W20...)
 
     dES0/dOuts0 = 2*(outs0 - t_outs0)
 
-    dOuts0/dW00 = sigmoid(...)*(1-sigmoid(...))*ap0
+    dOuts0/dW00 = sigmoid(...)*(1-sigmoid(...))* ap0
+
+    dOuts0/dAP0 = sigmoid(...)*(1-sigmoid(...))* ap0
 
     foreach i=0..N_OUTPUTS:
         foreach j=0..N_L2:
             dES[i]/dW[j][i] = 2*(outs[i] - t_outs[i]) * sigmoid(...)*(1-sigmoid(...)) * ap[j]
-                      = 2*(outs[i] - t_outs[i]) * OUTS[i] * (1 - OUTS[i]) * ap[j]
+                 = 2*(outs[i] - t_outs[i]) * OUTS[i] * (1 - OUTS[i]) * ap[j]
+
+    foreach j=0..N_L2:
+        des = 0
+        foreach i=0..N_OUTPUTS:
+            des += dES[i]/dAP[j]
+                 = 2*(outs[i] - t_outs[i]) * OUTS[i] * (1 - OUTS[i]) * w[i,j]
+
+WRONG:
+  W00 W01 W02  X0    E0 = X0*W00 + X0*W01 + X0*W02
+  W10 W11 W12  X1    E1 = X0*W00 + X0*W01 + X0*W02
+                     E2 = X0*W00 + X0*W01 + X0*W02
 
 
+ W00 W10         X0*W00 + X1*W10
+ W01 W11  X0  =  X0*W01 + X1*W11
+ W02 W12  X1     X0*W02 + X1*W12
+    
 
 BACKUP:
 
