@@ -21,7 +21,7 @@ impl fmt::Display for Matrix {
             }
             write!(f, "\n");
         }
-        
+
         return Ok(());
     }
 }
@@ -132,7 +132,7 @@ impl fmt::Display for Vector {
         for row in 0..self.rows {
             write!(f, "{:8.4}\n", self.mem[row]);
         }
-        
+
         return Ok(());
     }
 }
@@ -163,8 +163,7 @@ impl Vector {
     pub fn copy_from(&mut self, v: &Vector) {
         assert!(self.rows == v.rows,
                 "Invalid dimentions for copy_from: {}x1 vs {}x1",
-                self.rows, v.rows);
-
+                self.rows, v.rows); 
         self.mem = v.mem.to_vec();
     }
 
@@ -212,7 +211,7 @@ fn calc_output_error_grad_prefix(
     assert!(outputs.rows == error.rows && error.rows == res.rows,
             "Invalid dimentions for output error grad prefix PD: {}x1, {}x1, {}x1",
             outputs.rows, error.rows, res.rows);
-    
+
     for row in 0..outputs.rows {
         res.mem[row] = 2.0*error.mem[row]*outputs.mem[row]*(1.0 - outputs.mem[row]);
     }
@@ -271,11 +270,11 @@ fn main() {
         l2_activations.apply(sigmoid);
         output_weights.dot_vec(&l2_activations, &mut outputs);
         outputs.apply(sigmoid);
-    
+
         // Error
         true_outputs.copy_from(&inputs);
         true_outputs.sub(&outputs, &mut error);
-        
+
         // Backward propagation
         // Output layer
         calc_output_error_grad_prefix(&outputs, &error, &mut output_error_grad_prefix);
@@ -283,7 +282,7 @@ fn main() {
                                &l2_activations, &mut output_weights_pd);
         output_weights.transpose(&mut output_weights_t);
         output_weights_t.dot_vec(&output_error_grad_prefix, &mut l2_error);
-        
+
         // Hidden layer L2
         calc_output_error_grad_prefix(
             &l2_activations, &l2_error, &mut l2_error_grad_prefix);
@@ -291,7 +290,7 @@ fn main() {
                                &l1_activations, &mut l2_weights_pd);
         l2_weights.transpose(&mut l2_weights_t);
         l2_weights_t.dot_vec(&l2_error_grad_prefix, &mut l1_error);
-        
+
         // Hidden layer L1
         calc_output_error_grad_prefix(
             &l1_activations, &l1_error, &mut l1_error_grad_prefix);
