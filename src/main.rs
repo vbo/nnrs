@@ -1,7 +1,6 @@
 extern crate rand;
 
 use std::fmt;
-use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 
 #[derive(Debug)]
@@ -11,15 +10,19 @@ struct Matrix {
     rows: usize,
 }
 
+static WRITE_ERR: &'static str = "Failed to write";
+
 impl fmt::Display for Matrix {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Matrix {}x{}:\n", self.rows, self.cols);
+        write!(f, "Matrix {}x{}:\n", self.rows, self.cols).expect(&WRITE_ERR);
         for row in 0..self.rows {
             let row_start = row*self.cols;
             for col in 0..self.cols {
-                write!(f, "{:8.4}", self.mem[row_start + col]);
+                write!(f, "{:8.4}", self.mem[row_start + col]).expect(&WRITE_ERR);
+
             }
-            write!(f, "\n");
+            write!(f, "\n").expect(&WRITE_ERR);
+
         }
 
         return Ok(());
@@ -70,6 +73,7 @@ impl Matrix {
         }
     }
 
+    #[allow(dead_code)]
     pub fn sub(&mut self, mat: &Matrix) {
         assert!(
             self.rows == mat.rows && self.cols == mat.cols,
@@ -128,9 +132,9 @@ struct Vector {
 
 impl fmt::Display for Vector {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Vector {}x1:\n", self.rows);
+        write!(f, "Vector {}x1:\n", self.rows).expect(&WRITE_ERR);
         for row in 0..self.rows {
-            write!(f, "{:8.4}\n", self.mem[row]);
+            write!(f, "{:8.4}\n", self.mem[row]).expect(&WRITE_ERR);
         }
 
         return Ok(());
@@ -185,6 +189,14 @@ impl Vector {
             self.mem[i] = range.ind_sample(&mut rng);
         }
     }
+
+    pub fn get_length(&self) -> f64 {
+        let mut res: f64 = 0.0;
+        for i in 0..self.rows {
+            res += self.mem[i]*self.mem[i];
+        }
+        return res.sqrt();
+    }
 }
 
 fn calc_output_weights_pd(
@@ -223,7 +235,8 @@ const N_L1: usize = 5;
 const N_L2: usize = 5;
 const N_OUTPUTS: usize = 2;
 
-const BATCH_SIZE: usize = 2;
+const BATCH_SIZE: usize = 10000;
+const LEARNING_RATE: f64 = 1.0;
 
 fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
 
@@ -233,12 +246,13 @@ fn main() {
     let mut inputs = Vector::new(N_INPUTS).init_with(1.0);
     let mut l1_weights = Matrix::new(N_L1, N_INPUTS).init_rand();
     let mut l1_weights_pd = Matrix::new(N_L1, N_INPUTS).init_with(0.0);
-    let mut l1_weights_t = Matrix::new(N_INPUTS, N_L1).init_rand();
+    let mut l1_weights_batch_pd = Matrix::new(N_L1, N_INPUTS).init_with(0.0);
     let mut l1_activations = Vector::new(N_L1).init_with(0.0);
     let mut l1_error = Vector::new(N_L1).init_with(0.0);
     let mut l1_error_grad_prefix = Vector::new(N_L1).init_with(0.0);
     let mut l2_weights = Matrix::new(N_L2, N_L1).init_rand();
     let mut l2_weights_pd = Matrix::new(N_L2, N_L1).init_with(0.0);
+    let mut l2_weights_batch_pd = Matrix::new(N_L2, N_L1).init_with(0.0);
     let mut l2_weights_t = Matrix::new(N_L1, N_L2).init_rand();
     let mut l2_activations = Vector::new(N_L2).init_with(0.0);
     let mut l2_error = Vector::new(N_L2).init_with(0.0);
@@ -246,10 +260,12 @@ fn main() {
     let mut output_weights = Matrix::new(N_OUTPUTS, N_L2).init_rand();
     let mut output_weights_t = Matrix::new(N_L2, N_OUTPUTS).init_rand();
     let mut output_weights_pd = Matrix::new(N_OUTPUTS, N_L2).init_with(0.0);
+    let mut output_weights_batch_pd = Matrix::new(N_OUTPUTS, N_L2).init_with(0.0);
     let mut output_error_grad_prefix = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
+    let mut batch_error: f64 = 0.0;
 
     println!("before inputs:{}", inputs);
     //println!("before l1_weights:{}", l1_weights);
@@ -274,12 +290,14 @@ fn main() {
         // Error
         true_outputs.copy_from(&inputs);
         true_outputs.sub(&outputs, &mut error);
+        batch_error += error.get_length();
 
         // Backward propagation
         // Output layer
         calc_output_error_grad_prefix(&outputs, &error, &mut output_error_grad_prefix);
         calc_output_weights_pd(&output_error_grad_prefix,
                                &l2_activations, &mut output_weights_pd);
+        output_weights_batch_pd.add(&output_weights_pd);
         output_weights.transpose(&mut output_weights_t);
         output_weights_t.dot_vec(&output_error_grad_prefix, &mut l2_error);
 
@@ -288,6 +306,7 @@ fn main() {
             &l2_activations, &l2_error, &mut l2_error_grad_prefix);
         calc_output_weights_pd(&l2_error_grad_prefix,
                                &l1_activations, &mut l2_weights_pd);
+        l2_weights_batch_pd.add(&l2_weights_pd);
         l2_weights.transpose(&mut l2_weights_t);
         l2_weights_t.dot_vec(&l2_error_grad_prefix, &mut l1_error);
 
@@ -296,22 +315,27 @@ fn main() {
             &l1_activations, &l1_error, &mut l1_error_grad_prefix);
         calc_output_weights_pd(&l1_error_grad_prefix,
                                &inputs, &mut l1_weights_pd);
+        l1_weights_batch_pd.add(&l1_weights_pd);
         //l1_weights.transpose(&mut l1_weights_t);
         //l1_weights_t.dot_vec(&l1_error_grad_prefix, &mut l1_error);
 
-        // Weights adjustment
-        // Output
-        output_weights_pd.apply(|x| { x * 0.1 });
-        output_weights.add(&output_weights_pd);
-        // L2
-        l2_weights_pd.apply(|x| { x * 0.1 });
-        l2_weights.add(&l2_weights_pd);
-        // L1
-        l1_weights_pd.apply(|x| { x * 0.1 });
-        l1_weights.add(&l1_weights_pd);
-
-        if i % 100_000 == 0 {
-            println!("error[{}] {:?}", i, error.mem);
+        if i % BATCH_SIZE == 0 {
+            println!("error: {:8.4}", batch_error / BATCH_SIZE as f64);
+            batch_error = 0.0;
+            // Weights adjustment
+            // Output
+            output_weights_batch_pd.apply(|x| { x * LEARNING_RATE / BATCH_SIZE as f64 });
+            // println!("output_weights_batch_pd:{}", output_weights_batch_pd);
+            output_weights.add(&output_weights_batch_pd);
+            output_weights_batch_pd.apply(|_: f64| 0.0);
+            // L2
+            l2_weights_batch_pd.apply(|x| { x * LEARNING_RATE / BATCH_SIZE as f64 });
+            l2_weights.add(&l2_weights_batch_pd);
+            l2_weights_batch_pd.apply(|_: f64| 0.0);
+            // L1
+            l1_weights_batch_pd.apply(|x| { x * LEARNING_RATE / BATCH_SIZE as f64 });
+            l1_weights.add(&l1_weights_batch_pd);
+            l1_weights_batch_pd.apply(|_: f64| 0.0);
         }
     }
 
