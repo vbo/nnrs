@@ -19,13 +19,17 @@ foreach:
 
     dES0/dAP0 = dES0/dOuts0*dOuts0/dAP0
 
+    dES0/dB0 = dES0/dOuts0*dOuts0/dB0
+
     Outs0(W00) = sigmoid(ap0*W00 + ap1*W10 + ap2*W20...)
 
     dES0/dOuts0 = 2*(outs0 - t_outs0)
 
     dOuts0/dW00 = sigmoid(...)*(1-sigmoid(...))* ap0
 
-    dOuts0/dAP0 = sigmoid(...)*(1-sigmoid(...))* ap0
+    dOuts0/dAP0 = sigmoid(...)*(1-sigmoid(...))* W00
+
+    dOuts0/dB0 = sigmoid(...)*(1-sigmoid(...))
 
     foreach i=0..N_OUTPUTS:
         foreach j=0..N_L2:
