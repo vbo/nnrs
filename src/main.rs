@@ -251,12 +251,14 @@ fn calc_bias_pd(
 
 // Sizes
 const N_INPUTS: usize = 2;
-const N_L1: usize = 2;
-const N_L2: usize = 2;
+const N_L1: usize = 8;
+const N_L2: usize = 4;
 const N_OUTPUTS: usize = 2;
 
-const BATCH_SIZE: usize = 10000;
+const BATCH_SIZE: usize = 1000;
+const LOG_EVERY_N: usize = 100_000;
 const LEARNING_RATE: f64 = 1.0;
+const NUM_EPOCHS: usize = BATCH_SIZE*10_000;
 
 fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
 
@@ -300,12 +302,12 @@ fn main() {
 
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
-    let mut batch_error: f64 = 0.0;
+    let mut avg_error: f64 = 0.0;
 
     let avg_by_batch = |x| { x * LEARNING_RATE / BATCH_SIZE as f64 };
     let set_0 = |_: f64| 0.0;
 
-    for i in 0..1_000_000 {
+    for i in 0..NUM_EPOCHS {
         // Training data
         inputs.fill_rand();
 
@@ -325,7 +327,7 @@ fn main() {
         // Error
         true_outputs.copy_from(&inputs);
         true_outputs.sub(&outputs, &mut error);
-        batch_error += error.get_length();
+        avg_error += error.get_length();
 
         // Backward propagation
         // Output layer
@@ -350,18 +352,20 @@ fn main() {
         l1_bias_batch_pd.add_to_me(&l1_bias_pd);
         l1_weights_batch_pd.add(&l1_weights_pd);
 
-
-        if i % BATCH_SIZE == 0 {
-            println!("error: {:8.4}", batch_error / BATCH_SIZE as f64);
-            if i % (BATCH_SIZE * 20) == 0 {
-                println!("after l1_weights:{}", l1_weights);
-                println!("after l1_bias:{}", l1_bias);
-                println!("after l2_weights:{}", l2_weights);
-                println!("after l2_bias:{}", l2_bias);
-                println!("after output_weights:{}", output_weights);
-                println!("after output_bias:{}", output_bias);
+        if i % LOG_EVERY_N == 0 {
+            println!("error over last {}: {:8.4}", LOG_EVERY_N, avg_error / LOG_EVERY_N as f64);
+            avg_error = 0.0;
+            if i % (BATCH_SIZE * 100) == 0 {
+                println!("l1_weights:{}", l1_weights);
+                println!("l1_bias:{}", l1_bias);
+                println!("l2_weights:{}", l2_weights);
+                println!("l2_bias:{}", l2_bias);
+                println!("output_weights:{}", output_weights);
+                println!("output_bias:{}", output_bias);
+                println!("output:{}", outputs);
             }
-            batch_error = 0.0;
+        }
+        if i % BATCH_SIZE == 0 {
             // Weights adjustment
             // Output
             output_bias_batch_pd.apply(&avg_by_batch);
@@ -400,6 +404,4 @@ fn main() {
     println!("after output_weights:{}", output_weights);
     println!("after output_bias:{}", output_bias);
     println!("after error:{}", error);
-
-    println!("after output_weights_pd:{}", output_weights_pd);
 }
