@@ -5,3 +5,4 @@ authors = ["Vadim Borodin <borodin.vadim@gmail.com>"]
 
 [dependencies]
 rand = "0.4.2"
+byteorder = "1.2.2"
