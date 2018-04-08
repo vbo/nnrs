@@ -306,12 +306,20 @@ impl Vector {
         }
     }
 
-    pub fn get_length(&self) -> f64 {
+    pub fn calc_length(&self) -> f64 {
         let mut res: f64 = 0.0;
         for i in 0..self.rows {
             res += self.mem[i]*self.mem[i];
         }
         return res.sqrt();
+    }
+
+    pub fn calc_sum(&self) -> f64 {
+        let mut res: f64 = 0.0;
+        for i in 0..self.rows {
+            res += self.mem[i];
+        }
+        return res;
     }
 
     pub fn max_component(&self) -> (usize, f64) {
@@ -347,7 +355,7 @@ fn calc_weights_pd(
     }
 }
 
-fn calc_bias_pd(
+fn calc_grad_prefix(
     outputs: &Vector,
     error: &Vector,
     res: &mut Vector) {
@@ -387,8 +395,8 @@ const N_L1: usize = 16;
 const N_L2: usize = 16;
 const N_OUTPUTS: usize = 10;
 
-const BATCH_SIZE: usize = 1000;
-const LOG_EVERY_N: usize = 100_000;
+const BATCH_SIZE: usize = 100;
+const LOG_EVERY_N: usize = 10_000;
 const LEARNING_RATE: f64 = 1.0;
 const NUM_EPOCHS: usize = 1000 * 60000;
 
@@ -404,37 +412,37 @@ fn main() {
 
     let mut inputs = Vector::new(N_INPUTS).init_with(1.0);
 
-    let mut l1_weights = Matrix::new(N_L1, N_INPUTS).init_rand();
+    let mut l1_weights = Matrix::new(N_L1, N_INPUTS).init_with(0.5);
     let mut l1_weights_pd = Matrix::new(N_L1, N_INPUTS).init_with(0.0);
     let mut l1_weights_batch_pd = Matrix::new(N_L1, N_INPUTS).init_with(0.0);
+    let mut l1_grad_prefix = Vector::new(N_L1).init_with(0.0);
 
-    let mut l1_bias = Vector::new(N_L1).init_rand();
-    let mut l1_bias_pd = Vector::new(N_L1).init_rand();
-    let mut l1_bias_batch_pd = Vector::new(N_L1).init_rand();
+    let mut l1_bias = 0.0f64;
+    let mut l1_bias_batch_pd = 0.0f64;
     let mut l1_activations = Vector::new(N_L1).init_with(0.0);
 
     let mut l1_error = Vector::new(N_L1).init_with(0.0);
 
-    let mut l2_weights = Matrix::new(N_L2, N_L1).init_rand();
+    let mut l2_weights = Matrix::new(N_L2, N_L1).init_with(0.5);
     let mut l2_weights_pd = Matrix::new(N_L2, N_L1).init_with(0.0);
     let mut l2_weights_batch_pd = Matrix::new(N_L2, N_L1).init_with(0.0);
-    let mut l2_weights_t = Matrix::new(N_L1, N_L2).init_rand();
+    let mut l2_weights_t = Matrix::new(N_L1, N_L2).init_with(0.0);
+    let mut l2_grad_prefix = Vector::new(N_L2).init_with(0.0);
 
-    let mut l2_bias = Vector::new(N_L2).init_rand();
-    let mut l2_bias_pd = Vector::new(N_L2).init_rand();
-    let mut l2_bias_batch_pd = Vector::new(N_L2).init_rand();
+    let mut l2_bias = 0.0f64;
+    let mut l2_bias_batch_pd = 0.0f64;
     let mut l2_activations = Vector::new(N_L2).init_with(0.0);
 
     let mut l2_error = Vector::new(N_L2).init_with(0.0);
 
-    let mut output_weights = Matrix::new(N_OUTPUTS, N_L2).init_rand();
-    let mut output_weights_t = Matrix::new(N_L2, N_OUTPUTS).init_rand();
+    let mut output_weights = Matrix::new(N_OUTPUTS, N_L2).init_with(0.5);
+    let mut output_weights_t = Matrix::new(N_L2, N_OUTPUTS).init_with(0.0);
     let mut output_weights_pd = Matrix::new(N_OUTPUTS, N_L2).init_with(0.0);
     let mut output_weights_batch_pd = Matrix::new(N_OUTPUTS, N_L2).init_with(0.0);
+    let mut output_grad_prefix = Vector::new(N_OUTPUTS).init_with(0.0);
 
-    let mut output_bias = Vector::new(N_OUTPUTS).init_rand();
-    let mut output_bias_pd = Vector::new(N_OUTPUTS).init_rand();
-    let mut output_bias_batch_pd = Vector::new(N_OUTPUTS).init_rand();
+    let mut output_bias = 0.0f64;
+    let mut output_bias_batch_pd = 0.0f64;
     let mut outputs = Vector::new(N_OUTPUTS).init_with(0.0);
 
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
@@ -447,6 +455,8 @@ fn main() {
 
     let mut current_examples_cursor = 0usize;
     let mut hits = 0usize;
+    // TODO(lenny): this should be a while loop, i should be incremented when
+    // we start counting from the beginning in the training data.
     for i in 0..NUM_EPOCHS {
         // Training data
         let current_example_index = training_data.example_indices[current_examples_cursor];
@@ -467,20 +477,21 @@ fn main() {
 
         // Forward propagation
         l1_weights.dot_vec(&inputs, &mut l1_activations);
-        l1_activations.add_to_me(&l1_bias);
+        l1_activations.apply(|x| {x + l1_bias});
         l1_activations.apply(sigmoid);
 
         l2_weights.dot_vec(&l1_activations, &mut l2_activations);
-        l2_activations.add_to_me(&l2_bias);
+        l2_activations.apply(|x| {x + l2_bias});
         l2_activations.apply(sigmoid);
 
         output_weights.dot_vec(&l2_activations, &mut outputs);
-        outputs.add_to_me(&output_bias);
+        outputs.add_to_me(&output_grad_prefix);
+        outputs.apply(|x| {x + output_bias});
         outputs.apply(sigmoid);
 
         // Error
         true_outputs.sub(&outputs, &mut error);
-        avg_error += error.get_length();
+        avg_error += error.calc_length();
         let (max_i, max) = outputs.max_component();
         let (tmax_i, tmax) = true_outputs.max_component();
         if max_i == tmax_i {
@@ -489,25 +500,25 @@ fn main() {
 
         // Backward propagation
         // Output layer
-        calc_bias_pd(&outputs, &error, &mut output_bias_pd);
-        calc_weights_pd(&output_bias_pd, &l2_activations, &mut output_weights_pd);
-        output_bias_batch_pd.add_to_me(&output_bias_pd);
+        calc_grad_prefix(&outputs, &error, &mut output_grad_prefix);
+        calc_weights_pd(&output_grad_prefix, &l2_activations, &mut output_weights_pd);
+        output_bias_batch_pd += output_grad_prefix.calc_sum();
         output_weights_batch_pd.add(&output_weights_pd);
         output_weights.transpose(&mut output_weights_t);
-        output_weights_t.dot_vec(&output_bias, &mut l2_error);
+        output_weights_t.dot_vec(&output_grad_prefix, &mut l2_error);
 
         // Hidden layer L2
-        calc_bias_pd(&l2_activations, &l2_error, &mut l2_bias_pd);
-        calc_weights_pd(&l2_bias_pd, &l1_activations, &mut l2_weights_pd);
-        l2_bias_batch_pd.add_to_me(&l2_bias_pd);
+        calc_grad_prefix(&l2_activations, &l2_error, &mut l2_grad_prefix);
+        calc_weights_pd(&l2_grad_prefix, &l1_activations, &mut l2_weights_pd);
+        l2_bias_batch_pd += l2_grad_prefix.calc_sum();
         l2_weights_batch_pd.add(&l2_weights_pd);
         l2_weights.transpose(&mut l2_weights_t);
-        l2_weights_t.dot_vec(&l2_bias, &mut l1_error);
+        l2_weights_t.dot_vec(&l2_grad_prefix, &mut l1_error);
 
         // Hidden layer L1
-        calc_bias_pd(&l1_activations, &l1_error, &mut l1_bias_pd);
-        calc_weights_pd(&l1_bias_pd, &inputs, &mut l1_weights_pd);
-        l1_bias_batch_pd.add_to_me(&l1_bias_pd);
+        calc_grad_prefix(&l1_activations, &l1_error, &mut l1_grad_prefix);
+        calc_weights_pd(&l1_grad_prefix, &inputs, &mut l1_weights_pd);
+        l1_bias_batch_pd += l1_grad_prefix.calc_sum();
         l1_weights_batch_pd.add(&l1_weights_pd);
 
         if i % LOG_EVERY_N == 0 {
@@ -517,38 +528,35 @@ fn main() {
             hits = 0;
             if i % (BATCH_SIZE * 100) == 0 {
                 //println!("l1_weights:{}", l1_weights);
-                //println!("l1_bias:{}", l1_bias);
+                //println!("l1_grad_prefix:{}", l1_grad_prefix);
                 //println!("l2_weights:{}", l2_weights);
-                //println!("l2_bias:{}", l2_bias);
+                //println!("l2_grad_prefix:{}", l2_grad_prefix);
                 //println!("output_weights:{}", output_weights);
-                //println!("output_bias:{}", output_bias);
-                //println!("output:{}", outputs);
+                //println!("output_grad_prefix:{}", output_grad_prefix);
+                println!("output:{}", outputs);
             }
         }
         if i % BATCH_SIZE == 0 {
             // Weights adjustment
             // Output
-            output_bias_batch_pd.apply(&avg_by_batch);
-            output_bias.add_to_me(&output_bias_batch_pd);
-            output_bias_batch_pd.apply(&set_0);
+            output_bias += avg_by_batch(output_bias_batch_pd);
+            output_bias_batch_pd = 0.0;
 
             output_weights_batch_pd.apply(&avg_by_batch);
             output_weights.add(&output_weights_batch_pd);
             output_weights_batch_pd.apply(&set_0);
 
             // L2
-            l2_bias_batch_pd.apply(&avg_by_batch);
-            l2_bias.add_to_me(&l2_bias_batch_pd);
-            l2_bias_batch_pd.apply(&set_0);
+            l2_bias += avg_by_batch(l2_bias_batch_pd);
+            l2_bias_batch_pd = 0.0;
 
             l2_weights_batch_pd.apply(&avg_by_batch);
             l2_weights.add(&l2_weights_batch_pd);
             l2_weights_batch_pd.apply(&set_0);
 
             // L1
-            l1_bias_batch_pd.apply(&avg_by_batch);
-            l1_bias.add_to_me(&l1_bias_batch_pd);
-            l1_bias_batch_pd.apply(&set_0);
+            l1_bias += avg_by_batch(l1_bias_batch_pd);
+            l1_bias_batch_pd = 0.0;
 
             l1_weights_batch_pd.apply(&avg_by_batch);
             l1_weights.add(&l1_weights_batch_pd);
@@ -558,10 +566,10 @@ fn main() {
 
 
     //println!("after l1_weights:{}", l1_weights);
-    //println!("after l1_bias:{}", l1_bias);
+    //println!("after l1_grad_prefix:{}", l1_grad_prefix);
     //println!("after l2_weights:{}", l2_weights);
-    //println!("after l2_bias:{}", l2_bias);
+    //println!("after l2_grad_prefix:{}", l2_grad_prefix);
     //println!("after output_weights:{}", output_weights);
-    //println!("after output_bias:{}", output_bias);
+    //println!("after output_grad_prefix:{}", output_grad_prefix);
     //println!("after error:{}", error);
 }
