@@ -116,7 +116,7 @@ impl Matrix {
 
     pub fn init_rand(mut self) -> Self {
         let mut rng = rand::thread_rng();
-        let range = Range::new(0.0, 1.0);
+        let range = Range::new(-0.5, 0.5);
 
         for _ in 0..self.rows*self.cols {
             self.mem.push(range.ind_sample(&mut rng));
@@ -339,32 +339,32 @@ impl Vector {
 }
 
 fn calc_weights_pd(
-    output_error_grad_prefix: &Vector,
-    l2_activations: &Vector,
+    error_grad_prefix: &Vector,
+    previous_activations: &Vector,
     res: &mut Matrix) {
-    assert!(output_error_grad_prefix.rows == res.rows && res.cols == l2_activations.rows,
+    assert!(error_grad_prefix.rows == res.rows && res.cols == previous_activations.rows,
             "Invalid dimentions for output weights PD: {}x1, {}x1, {}x{}",
-            output_error_grad_prefix.rows, l2_activations.rows, res.rows, res.cols);
+            error_grad_prefix.rows, previous_activations.rows, res.rows, res.cols);
 
     for row in 0..res.rows {
         let row_start = row*res.cols;
         for col in 0..res.cols {
-            res.mem[row_start + col] = output_error_grad_prefix.mem[row]
-                                     * l2_activations.mem[col];
+            res.mem[row_start + col] = error_grad_prefix.mem[row]
+                                     * previous_activations.mem[col];
         }
     }
 }
 
 fn calc_grad_prefix(
-    outputs: &Vector,
+    activations: &Vector,
     error: &Vector,
     res: &mut Vector) {
-    assert!(outputs.rows == error.rows && error.rows == res.rows,
+    assert!(activations.rows == error.rows && error.rows == res.rows,
             "Invalid dimentions for output error grad prefix PD: {}x1, {}x1, {}x1",
-            outputs.rows, error.rows, res.rows);
+            activations.rows, error.rows, res.rows);
 
-    for row in 0..outputs.rows {
-        res.mem[row] = 2.0*error.mem[row]*outputs.mem[row]*(1.0 - outputs.mem[row]);
+    for row in 0..activations.rows {
+        res.mem[row] = 2.0*error.mem[row]*activations.mem[row]*(1.0 - activations.mem[row]);
     }
 }
 
@@ -395,10 +395,10 @@ const N_L1: usize = 16;
 const N_L2: usize = 16;
 const N_OUTPUTS: usize = 10;
 
-const BATCH_SIZE: usize = 100;
+const BATCH_SIZE: usize = 1000;
 const LOG_EVERY_N: usize = 10_000;
-const LEARNING_RATE: f64 = 1.0;
-const NUM_EPOCHS: usize = 1000 * 60000;
+const LEARNING_RATE: f64 = 0.1;
+const NUM_EPOCHS: usize = 1000;
 
 fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
 
@@ -412,7 +412,7 @@ fn main() {
 
     let mut inputs = Vector::new(N_INPUTS).init_with(1.0);
 
-    let mut l1_weights = Matrix::new(N_L1, N_INPUTS).init_with(0.5);
+    let mut l1_weights = Matrix::new(N_L1, N_INPUTS).init_rand();
     let mut l1_weights_pd = Matrix::new(N_L1, N_INPUTS).init_with(0.0);
     let mut l1_weights_batch_pd = Matrix::new(N_L1, N_INPUTS).init_with(0.0);
     let mut l1_grad_prefix = Vector::new(N_L1).init_with(0.0);
@@ -423,7 +423,7 @@ fn main() {
 
     let mut l1_error = Vector::new(N_L1).init_with(0.0);
 
-    let mut l2_weights = Matrix::new(N_L2, N_L1).init_with(0.5);
+    let mut l2_weights = Matrix::new(N_L2, N_L1).init_rand();
     let mut l2_weights_pd = Matrix::new(N_L2, N_L1).init_with(0.0);
     let mut l2_weights_batch_pd = Matrix::new(N_L2, N_L1).init_with(0.0);
     let mut l2_weights_t = Matrix::new(N_L1, N_L2).init_with(0.0);
@@ -435,7 +435,7 @@ fn main() {
 
     let mut l2_error = Vector::new(N_L2).init_with(0.0);
 
-    let mut output_weights = Matrix::new(N_OUTPUTS, N_L2).init_with(0.5);
+    let mut output_weights = Matrix::new(N_OUTPUTS, N_L2).init_rand();
     let mut output_weights_t = Matrix::new(N_L2, N_OUTPUTS).init_with(0.0);
     let mut output_weights_pd = Matrix::new(N_OUTPUTS, N_L2).init_with(0.0);
     let mut output_weights_batch_pd = Matrix::new(N_OUTPUTS, N_L2).init_with(0.0);
@@ -455,9 +455,8 @@ fn main() {
 
     let mut current_examples_cursor = 0usize;
     let mut hits = 0usize;
-    // TODO(lenny): this should be a while loop, i should be incremented when
-    // we start counting from the beginning in the training data.
-    for i in 0..NUM_EPOCHS {
+    let mut i = 1usize;
+    while i < NUM_EPOCHS {
         // Training data
         let current_example_index = training_data.example_indices[current_examples_cursor];
         let input_data_offset = current_example_index*training_data.input_size;
@@ -473,6 +472,7 @@ fn main() {
         current_examples_cursor += 1;
         if current_examples_cursor >= training_data.examples_count {
             current_examples_cursor = 0;
+            i += 1;
         }
 
         // Forward propagation
@@ -521,12 +521,12 @@ fn main() {
         l1_bias_batch_pd += l1_grad_prefix.calc_sum();
         l1_weights_batch_pd.add(&l1_weights_pd);
 
-        if i % LOG_EVERY_N == 0 {
+        if (i*current_examples_cursor) % LOG_EVERY_N == 0 {
             println!("error over last {}: {:8.4}", LOG_EVERY_N, avg_error / LOG_EVERY_N as f64);
             println!("hits {}%", (hits as f64) * 100.0 / (LOG_EVERY_N as f64));
             avg_error = 0.0;
             hits = 0;
-            if i % (BATCH_SIZE * 100) == 0 {
+            if (i*current_examples_cursor) % (BATCH_SIZE * 100) == 0 {
                 //println!("l1_weights:{}", l1_weights);
                 //println!("l1_grad_prefix:{}", l1_grad_prefix);
                 //println!("l2_weights:{}", l2_weights);
@@ -536,7 +536,7 @@ fn main() {
                 println!("output:{}", outputs);
             }
         }
-        if i % BATCH_SIZE == 0 {
+        if (i*current_examples_cursor) % BATCH_SIZE == 0 {
             // Weights adjustment
             // Output
             output_bias += avg_by_batch(output_bias_batch_pd);
