@@ -1,0 +1,18 @@
+
+
+Network
+
+ - Input
+ - Hidden0
+ - Hidden1
+ - Output
+
+LayerDependency
+ - Layer
+ - Weihts matrix
+
+Layer
+ - activations vector[N]
+ - [LayerDependency]
+ - bias = float
+ - activation function = sigmoid

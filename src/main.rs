@@ -1,343 +1,19 @@
 extern crate rand;
-extern crate byteorder;
 
 use std::fmt;
-use std::fs::File;
-use std::io::Read;
 
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
-use byteorder::{ByteOrder, BigEndian};
 
-#[derive(Debug)]
-struct Matrix {
-    mem: Vec<f64>,
-    cols: usize,
-    rows: usize,
-}
+mod math;
+use math::Matrix;
+use math::Vector;
 
-struct TrainingData {
-    input_mem: Vec<f64>,
-    label_mem: Vec<f64>,
-    example_indices: Vec<usize>,
-    examples_count: usize,
-    input_size: usize,
-    label_size: usize,
-}
+mod training_data;
+use training_data::TrainingData;
 
-fn load_mnist_training_data() -> TrainingData {
-    const MNIST_IMAGES_FILE: &str = "data/train-images-idx3-ubyte.bin";
-    const MNIST_LABELS_FILE: &str = "data/train-labels-idx1-ubyte.bin";
-    let mut images_file = File::open(MNIST_IMAGES_FILE).unwrap();
-
-    let mut header_buf = [0u8; 16];
-    images_file.read_exact(&mut header_buf).unwrap();
-    let images_count = BigEndian::read_i32(&header_buf[4..]) as usize;
-    let rows = BigEndian::read_i32(&header_buf[8..]) as usize;
-    let cols = BigEndian::read_i32(&header_buf[12..]) as usize;
-
-    let input_size = rows*cols;
-    let images_data_size = images_count*input_size;
-    let mut images_data = Vec::<f64>::with_capacity(images_data_size);
-    let mut read_buf = [0u8; 1024*1024];
-    loop {
-        let bytes_read = images_file.read(&mut read_buf).unwrap();
-        if bytes_read == 0 {
-            break;
-        }
-
-        for i in 0..bytes_read {
-            images_data.push((read_buf[i] as f64)/255.0);
-        }
-    }
-
-    let mut labels_file = File::open(MNIST_LABELS_FILE).unwrap();
-
-    let mut header_buf = [0u8; 8];
-    labels_file.read_exact(&mut header_buf).unwrap();
-    let labels_count = BigEndian::read_i32(&header_buf[4..]) as usize;
-
-    assert!(labels_count == images_count,
-            "Invalid training data. Labels count != inputs count");
-
-    let label_size = 10usize;
-    let labels_data_size = labels_count*label_size;
-    let mut labels_data = Vec::<f64>::with_capacity(labels_data_size);
-
-    loop {
-        let bytes_read = labels_file.read(&mut read_buf).unwrap();
-        if bytes_read == 0 {
-            break;
-        }
-
-        for i in 0..bytes_read {
-            let mut label_found = false;
-            for j in 0..10 {
-                let mut data = 0.0f64;
-                if read_buf[i] as usize == j {
-                    data = 1.0f64;
-                    label_found = true;
-                }
-
-                labels_data.push(data);
-            }
-
-            assert!(label_found, "Label not found byte: {}.", read_buf[i]);
-        }
-    }
-
-    let res = TrainingData {
-        input_mem: images_data,
-        label_mem: labels_data,
-        example_indices: (0usize..images_count).collect(),
-        examples_count: images_count,
-        input_size: input_size,
-        label_size: label_size,
-    };
-
-    return res;
-}
-
-impl Matrix {
-    pub fn new(rows: usize, cols: usize) -> Self {
-        return Self {
-            mem: Vec::with_capacity(cols * rows),
-            rows: rows,
-            cols: cols,
-        };
-    }
-
-    pub fn init_with(mut self, val: f64) -> Self {
-        for _ in 0..self.rows*self.cols {
-            self.mem.push(val);
-        }
-
-        return self;
-    }
-
-    pub fn init_rand(mut self) -> Self {
-        let mut rng = rand::thread_rng();
-        let range = Range::new(-0.5, 0.5);
-
-        for _ in 0..self.rows*self.cols {
-            self.mem.push(range.ind_sample(&mut rng));
-        }
-
-        return self;
-    }
-
-    pub fn dot_vec(&self, vec: &Vector, res: &mut Vector) {
-        assert!(
-            self.rows == res.rows && self.cols == vec.rows,
-            "Dimentions invalid for product: \
-             Matrix {}x{} * Vector {}x1 = Vector {}x1",
-            self.rows, self.cols, vec.rows, res.rows);
-
-        for row in 0..res.rows {
-            let mat_row_start = row*self.cols;
-            res.mem[row] = 0.0;
-            for col in 0..self.cols {
-                res.mem[row] += self.mem[mat_row_start + col] * vec.mem[col];
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn sub(&mut self, mat: &Matrix) {
-        assert!(
-            self.rows == mat.rows && self.cols == mat.cols,
-            "Dimentions invalid for sub: \
-             {}x{} != {}x{}",
-            self.rows, self.cols, mat.rows, mat.cols);
-
-        for i in 0..self.rows*self.cols {
-            self.mem[i] -= mat.mem[i];
-        }
-    }
-
-    pub fn add(&mut self, mat: &Matrix) {
-        assert!(
-            self.rows == mat.rows && self.cols == mat.cols,
-            "Dimentions invalid for add: \
-             {}x{} != {}x{}",
-            self.rows, self.cols, mat.rows, mat.cols);
-
-        for i in 0..self.rows*self.cols {
-            self.mem[i] += mat.mem[i];
-        }
-    }
-
-    pub fn apply<F>(&mut self, f: &F)
-                    where F: Fn(f64) -> f64 {
-        for i in 0..self.rows*self.cols {
-            self.mem[i] = f(self.mem[i]);
-        }
-    }
-
-    pub fn transpose(&self, res: &mut Matrix) {
-        assert!(
-            self.rows == res.cols && self.cols == res.rows,
-            "Dimentions invalid for transpose: {}x{}.T = {}x{}",
-            self.rows, self.cols, res.rows, res.cols);
-
-        for source_row in 0..self.rows {
-            let res_col = source_row;
-            let source_row_start = source_row*self.cols;
-            for source_col in 0..self.cols {
-                let res_row = source_col;
-                let source_val = self.mem[source_row_start + source_col];
-                res.mem[res_row*res.cols + res_col] = source_val;
-            }
-        }
-    }
-}
-
-const WRITE_ERR: &str = "Failed to write";
-
-impl fmt::Display for Matrix {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Matrix {}x{}:\n", self.rows, self.cols).expect(&WRITE_ERR);
-        for row in 0..self.rows {
-            let row_start = row*self.cols;
-            for col in 0..self.cols {
-                write!(f, "{:8.4}", self.mem[row_start + col]).expect(&WRITE_ERR);
-
-            }
-            write!(f, "\n").expect(&WRITE_ERR);
-
-        }
-
-        return Ok(());
-    }
-}
-
-
-#[derive(Debug)]
-struct Vector {
-    mem: Vec<f64>,
-    rows: usize,
-}
-
-impl fmt::Display for Vector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Vector {}x1:\n", self.rows).expect(&WRITE_ERR);
-        for row in 0..self.rows {
-            write!(f, "{:8.4}\n", self.mem[row]).expect(&WRITE_ERR);
-        }
-
-        return Ok(());
-    }
-}
-
-impl Vector {
-    pub fn new(rows: usize) -> Self {
-        return Self {
-            mem: Vec::with_capacity(rows),
-            rows: rows,
-        };
-    }
-
-    pub fn init_with(mut self, val: f64) -> Self {
-        for _ in 0..self.rows {
-            self.mem.push(val);
-        }
-
-        return self;
-    }
-
-    pub fn init_rand(mut self) -> Self {
-        let mut rng = rand::thread_rng();
-        let range = Range::new(0.0, 1.0);
-
-        for _ in 0..self.rows {
-            self.mem.push(range.ind_sample(&mut rng));
-        }
-        return self;
-    }
-
-    pub fn apply<F>(&mut self, f: F)
-                    where F: Fn(f64) -> f64 {
-        for row in 0..self.rows {
-            self.mem[row] = f(self.mem[row]);
-        }
-    }
-
-    pub fn copy_from(&mut self, v: &Vector) {
-        assert!(self.rows == v.rows,
-                "Invalid dimentions for copy_from: {}x1 vs {}x1",
-                self.rows, v.rows); 
-        self.mem = v.mem.to_vec();
-    }
-
-    pub fn copy_from_slice(&mut self, s: &[f64]) {
-        assert!(self.rows == s.len(),
-                "Invalid dimentions for copy_from_slice: {}x1 vs {}x1",
-                self.rows, s.len()); 
-        for i in 0..self.rows {
-            self.mem[i] = s[i];
-        }
-    }
-
-    pub fn sub(&self, v: &Vector, res: &mut Vector) {
-        assert!(self.rows == v.rows && self.rows == res.rows,
-                "Invalid dimentions for sub: {}x1 - {}x1 = {}x1",
-                self.rows, v.rows, res.rows);
-
-        for row in 0..self.rows {
-            res.mem[row] = self.mem[row] - v.mem[row];
-        }
-    }
-
-    pub fn add_to_me(&mut self, v: &Vector) {
-        assert!(self.rows == v.rows,
-                "Invalid dimentions for add: {}x1 + {}x1",
-                self.rows, v.rows);
-
-        for row in 0..self.rows {
-            self.mem[row] = self.mem[row] + v.mem[row];
-        }
-    }
-
-    pub fn fill_rand(&mut self) {
-        let mut rng = rand::thread_rng();
-        let range = Range::new(0.0, 1.0);
-
-        for i in 0..self.rows {
-            self.mem[i] = range.ind_sample(&mut rng);
-        }
-    }
-
-    pub fn calc_length(&self) -> f64 {
-        let mut res: f64 = 0.0;
-        for i in 0..self.rows {
-            res += self.mem[i]*self.mem[i];
-        }
-        return res.sqrt();
-    }
-
-    pub fn calc_sum(&self) -> f64 {
-        let mut res: f64 = 0.0;
-        for i in 0..self.rows {
-            res += self.mem[i];
-        }
-        return res;
-    }
-
-    pub fn max_component(&self) -> (usize, f64) {
-        let mut max = self.mem[0];
-        let mut max_i = 0;
-
-        for i in 1..self.rows {
-            let val = self.mem[i];
-            if val > max {
-                max = val;
-                max_i = i;
-            }
-        }
-
-        return (max_i, max);
-    }
-}
+mod network;
+use network::Network;
 
 fn calc_weights_pd(
     error_grad_prefix: &Vector,
@@ -403,10 +79,16 @@ const NUM_EPOCHS: usize = 1000;
 
 fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
 
+
 // Weights matrix:
 // Each row represents weights of edges between a given target node and all source nodes.
 fn main() {
-    let mut training_data = load_mnist_training_data();
+    let mut nn = Network::new();
+    let inputs_id = nn.add_layer(N_INPUTS);
+    let outputs_id = nn.add_layer(N_OUTPUTS);
+    nn.add_layer_dependency(outputs_id, inputs_id);
+
+    let mut training_data = training_data::load_mnist();
 
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
