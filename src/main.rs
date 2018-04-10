@@ -5,6 +5,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::Read;
 
+use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use byteorder::{ByteOrder, BigEndian};
 
@@ -405,7 +406,7 @@ fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
 // Weights matrix:
 // Each row represents weights of edges between a given target node and all source nodes.
 fn main() {
-    let training_data = load_mnist_training_data();
+    let mut training_data = load_mnist_training_data();
 
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
@@ -452,115 +453,121 @@ fn main() {
     let avg_by_batch = |x| { x * LEARNING_RATE / BATCH_SIZE as f64 };
     let set_0 = |_: f64| 0.0;
 
-
-    let mut current_examples_cursor = 0usize;
     let mut hits = 0usize;
-    let mut i = 1usize;
-    while i < NUM_EPOCHS {
-        // Training data
-        let current_example_index = training_data.example_indices[current_examples_cursor];
-        let input_data_offset = current_example_index*training_data.input_size;
-        let input_data_end = input_data_offset + training_data.input_size;
-        let input_data = &training_data.input_mem[input_data_offset..input_data_end];
+    let mut random_number_generator = rand::thread_rng();
+    let mut examples_processed = 0usize;
+    for current_epoch in 1..NUM_EPOCHS+1 {
+        // Randomize example order
+        random_number_generator.shuffle(
+            &mut training_data.example_indices.as_mut_slice());
 
-        let label_data_offset = current_example_index*training_data.label_size;
-        let label_data_end = label_data_offset + training_data.label_size;
-        let label_data = &training_data.label_mem[label_data_offset..label_data_end];
-        inputs.copy_from_slice(input_data);
-        true_outputs.copy_from_slice(label_data);
+        let mut current_examples_cursor = 0usize;
+        while current_examples_cursor < training_data.examples_count {
+            // Load current example
+            let current_example_index = training_data.example_indices[current_examples_cursor];
+            let input_data_offset = current_example_index*training_data.input_size;
+            let input_data_end = input_data_offset + training_data.input_size;
+            let input_data = &training_data.input_mem[input_data_offset..input_data_end];
 
-        current_examples_cursor += 1;
-        if current_examples_cursor >= training_data.examples_count {
-            current_examples_cursor = 0;
-            i += 1;
-        }
+            let label_data_offset = current_example_index*training_data.label_size;
+            let label_data_end = label_data_offset + training_data.label_size;
+            let label_data = &training_data.label_mem[label_data_offset..label_data_end];
+            inputs.copy_from_slice(input_data);
+            true_outputs.copy_from_slice(label_data);
 
-        // Forward propagation
-        l1_weights.dot_vec(&inputs, &mut l1_activations);
-        l1_activations.apply(|x| {x + l1_bias});
-        l1_activations.apply(sigmoid);
+            // Forward propagation
+            l1_weights.dot_vec(&inputs, &mut l1_activations);
+            l1_activations.apply(|x| {x + l1_bias});
+            l1_activations.apply(sigmoid);
 
-        l2_weights.dot_vec(&l1_activations, &mut l2_activations);
-        l2_activations.apply(|x| {x + l2_bias});
-        l2_activations.apply(sigmoid);
+            l2_weights.dot_vec(&l1_activations, &mut l2_activations);
+            l2_activations.apply(|x| {x + l2_bias});
+            l2_activations.apply(sigmoid);
 
-        output_weights.dot_vec(&l2_activations, &mut outputs);
-        outputs.add_to_me(&output_grad_prefix);
-        outputs.apply(|x| {x + output_bias});
-        outputs.apply(sigmoid);
+            output_weights.dot_vec(&l2_activations, &mut outputs);
+            outputs.add_to_me(&output_grad_prefix);
+            outputs.apply(|x| {x + output_bias});
+            outputs.apply(sigmoid);
 
-        // Error
-        true_outputs.sub(&outputs, &mut error);
-        avg_error += error.calc_length();
-        let (max_i, max) = outputs.max_component();
-        let (tmax_i, tmax) = true_outputs.max_component();
-        if max_i == tmax_i {
-            hits += 1;
-        }
-
-        // Backward propagation
-        // Output layer
-        calc_grad_prefix(&outputs, &error, &mut output_grad_prefix);
-        calc_weights_pd(&output_grad_prefix, &l2_activations, &mut output_weights_pd);
-        output_bias_batch_pd += output_grad_prefix.calc_sum();
-        output_weights_batch_pd.add(&output_weights_pd);
-        output_weights.transpose(&mut output_weights_t);
-        output_weights_t.dot_vec(&output_grad_prefix, &mut l2_error);
-
-        // Hidden layer L2
-        calc_grad_prefix(&l2_activations, &l2_error, &mut l2_grad_prefix);
-        calc_weights_pd(&l2_grad_prefix, &l1_activations, &mut l2_weights_pd);
-        l2_bias_batch_pd += l2_grad_prefix.calc_sum();
-        l2_weights_batch_pd.add(&l2_weights_pd);
-        l2_weights.transpose(&mut l2_weights_t);
-        l2_weights_t.dot_vec(&l2_grad_prefix, &mut l1_error);
-
-        // Hidden layer L1
-        calc_grad_prefix(&l1_activations, &l1_error, &mut l1_grad_prefix);
-        calc_weights_pd(&l1_grad_prefix, &inputs, &mut l1_weights_pd);
-        l1_bias_batch_pd += l1_grad_prefix.calc_sum();
-        l1_weights_batch_pd.add(&l1_weights_pd);
-
-        if (i*current_examples_cursor) % LOG_EVERY_N == 0 {
-            println!("error over last {}: {:8.4}", LOG_EVERY_N, avg_error / LOG_EVERY_N as f64);
-            println!("hits {}%", (hits as f64) * 100.0 / (LOG_EVERY_N as f64));
-            avg_error = 0.0;
-            hits = 0;
-            if (i*current_examples_cursor) % (BATCH_SIZE * 100) == 0 {
-                //println!("l1_weights:{}", l1_weights);
-                //println!("l1_grad_prefix:{}", l1_grad_prefix);
-                //println!("l2_weights:{}", l2_weights);
-                //println!("l2_grad_prefix:{}", l2_grad_prefix);
-                //println!("output_weights:{}", output_weights);
-                //println!("output_grad_prefix:{}", output_grad_prefix);
-                println!("output:{}", outputs);
+            // Error
+            true_outputs.sub(&outputs, &mut error);
+            avg_error += error.calc_length();
+            let (max_i, max) = outputs.max_component();
+            let (tmax_i, tmax) = true_outputs.max_component();
+            if max_i == tmax_i {
+                hits += 1;
             }
-        }
-        if (i*current_examples_cursor) % BATCH_SIZE == 0 {
-            // Weights adjustment
-            // Output
-            output_bias += avg_by_batch(output_bias_batch_pd);
-            output_bias_batch_pd = 0.0;
 
-            output_weights_batch_pd.apply(&avg_by_batch);
-            output_weights.add(&output_weights_batch_pd);
-            output_weights_batch_pd.apply(&set_0);
+            // Backward propagation
+            // Output layer
+            calc_grad_prefix(&outputs, &error, &mut output_grad_prefix);
+            calc_weights_pd(&output_grad_prefix, &l2_activations, &mut output_weights_pd);
+            output_bias_batch_pd += output_grad_prefix.calc_sum();
+            output_weights_batch_pd.add(&output_weights_pd);
+            output_weights.transpose(&mut output_weights_t);
+            output_weights_t.dot_vec(&output_grad_prefix, &mut l2_error);
 
-            // L2
-            l2_bias += avg_by_batch(l2_bias_batch_pd);
-            l2_bias_batch_pd = 0.0;
+            // Hidden layer L2
+            calc_grad_prefix(&l2_activations, &l2_error, &mut l2_grad_prefix);
+            calc_weights_pd(&l2_grad_prefix, &l1_activations, &mut l2_weights_pd);
+            l2_bias_batch_pd += l2_grad_prefix.calc_sum();
+            l2_weights_batch_pd.add(&l2_weights_pd);
+            l2_weights.transpose(&mut l2_weights_t);
+            l2_weights_t.dot_vec(&l2_grad_prefix, &mut l1_error);
 
-            l2_weights_batch_pd.apply(&avg_by_batch);
-            l2_weights.add(&l2_weights_batch_pd);
-            l2_weights_batch_pd.apply(&set_0);
+            // Hidden layer L1
+            calc_grad_prefix(&l1_activations, &l1_error, &mut l1_grad_prefix);
+            calc_weights_pd(&l1_grad_prefix, &inputs, &mut l1_weights_pd);
+            l1_bias_batch_pd += l1_grad_prefix.calc_sum();
+            l1_weights_batch_pd.add(&l1_weights_pd);
 
-            // L1
-            l1_bias += avg_by_batch(l1_bias_batch_pd);
-            l1_bias_batch_pd = 0.0;
+            if examples_processed % LOG_EVERY_N == 0 {
+                println!("error over last {}: {:8.4}",
+                         LOG_EVERY_N, avg_error / LOG_EVERY_N as f64);
+                println!("hits {}%", (hits as f64) * 100.0 / (LOG_EVERY_N as f64));
+                avg_error = 0.0;
+                hits = 0;
 
-            l1_weights_batch_pd.apply(&avg_by_batch);
-            l1_weights.add(&l1_weights_batch_pd);
-            l1_weights_batch_pd.apply(&set_0);
+                if examples_processed % (LOG_EVERY_N * 10) == 0 {
+                    //println!("l1_weights:{}", l1_weights);
+                    //println!("l1_grad_prefix:{}", l1_grad_prefix);
+                    //println!("l2_weights:{}", l2_weights);
+                    //println!("l2_grad_prefix:{}", l2_grad_prefix);
+                    //println!("output_weights:{}", output_weights);
+                    //println!("output_grad_prefix:{}", output_grad_prefix);
+                    println!("output:{}", outputs);
+                }
+            }
+
+            if (current_examples_cursor + 1) % BATCH_SIZE == 0 {
+                // Weights adjustment
+                // Output
+                output_bias += avg_by_batch(output_bias_batch_pd);
+                output_bias_batch_pd = 0.0;
+
+                output_weights_batch_pd.apply(&avg_by_batch);
+                output_weights.add(&output_weights_batch_pd);
+                output_weights_batch_pd.apply(&set_0);
+
+                // L2
+                l2_bias += avg_by_batch(l2_bias_batch_pd);
+                l2_bias_batch_pd = 0.0;
+
+                l2_weights_batch_pd.apply(&avg_by_batch);
+                l2_weights.add(&l2_weights_batch_pd);
+                l2_weights_batch_pd.apply(&set_0);
+
+                // L1
+                l1_bias += avg_by_batch(l1_bias_batch_pd);
+                l1_bias_batch_pd = 0.0;
+
+                l1_weights_batch_pd.apply(&avg_by_batch);
+                l1_weights.add(&l1_weights_batch_pd);
+                l1_weights_batch_pd.apply(&set_0);
+            }
+
+            examples_processed += 1;
+            current_examples_cursor += 1;
         }
     }
 
