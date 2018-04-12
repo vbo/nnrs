@@ -79,14 +79,15 @@ const NUM_EPOCHS: usize = 1000;
 
 fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
 
-
-// Weights matrix:
-// Each row represents weights of edges between a given target node and all source nodes.
 fn main() {
-    let mut nn = Network::new();
-    let inputs_id = nn.add_layer(N_INPUTS);
-    let outputs_id = nn.add_layer(N_OUTPUTS);
-    nn.add_layer_dependency(outputs_id, inputs_id);
+    let mut nn = Network::new(N_INPUTS, N_OUTPUTS);
+    let inputs_id = nn.input_layer();
+    let l1_id = nn.add_hidden_layer(N_L1);
+    let l2_id = nn.add_hidden_layer(N_L2);
+    let outputs_id = nn.output_layer();
+    nn.add_layer_dependency(outputs_id, l2_id);
+    nn.add_layer_dependency(l2_id, l1_id);
+    nn.add_layer_dependency(l1_id, inputs_id);
 
     let mut training_data = training_data::load_mnist();
 
@@ -156,6 +157,8 @@ fn main() {
             let label_data = &training_data.label_mem[label_data_offset..label_data_end];
             inputs.copy_from_slice(input_data);
             true_outputs.copy_from_slice(label_data);
+
+            nn.forward_propagation(input_data);
 
             // Forward propagation
             l1_weights.dot_vec(&inputs, &mut l1_activations);

@@ -137,10 +137,25 @@ dCost/dW = 2*(a(AP,W) - y)*a(AP,W)*SUM(AP)
 
 
 
+  I0A0  I1A0          I0A0*I0 + I1A0*I1
+  I0A1  I1A1          I0A1*I0 + I1A1*I1
+  I0A2  I1A2   * I0 = ...
+  I0A3  I1A3     I1
+  I0A4  I1A4     
 
 
 
+  1  1          1*I0 + 1*I1
+  1  1          1*I0 + 1*I1
+  1  1   * I0 = ...
+  1  1     I1
+  1  1     
 
+
+  O0
+  01
+  02
+  03
 
 
 
