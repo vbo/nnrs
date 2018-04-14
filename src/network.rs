@@ -1,6 +1,7 @@
 use math::Matrix;
 use math::Vector;
 use std::fmt;
+use std::collections::HashSet;
 
 pub struct Network {
     layers: Vec<Layer>,
@@ -8,7 +9,7 @@ pub struct Network {
     output_layer: LayerID,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct LayerID(usize);
 impl fmt::Display for LayerID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -41,23 +42,41 @@ impl Network {
     fn get_layer_mut(&mut self, id: LayerID) -> &mut Layer { &mut self.layers[id.0] }
     fn get_layer(&self, id: LayerID) -> &Layer { &self.layers[id.0] }
 
-    pub fn forward_propagation(&mut self, input_data: &[f64]) {
-        // TODO: implement dependency traversal.
-        let mut layers_order: Vec<LayerID> = Vec::new();
-        let i: usize = 0;
-
-        let mut stack: Vec<LayerID> = Vec::new();
-        stack.push(current_id);
-
-        loop {
-            let current_id = layers_order[i];
-            let deps = &self.get_layer(current_id).dependencies;
-            for dep_id in deps {
-                layer_order.push(dep_id);
+    fn calc_layers_order_internal(
+        &mut self,
+        scheduled_currently: &mut HashSet<LayerID>,
+        layers_order: &mut Vec<LayerID>,
+        current_id: LayerID
+    ) {
+        scheduled_currently.insert(current_id);
+        for dependency in &self.get_layer(current_id).dependencies {
+            if layers_order.contains(&dependency.id) {
+                continue;
             }
-            i += 1;
+            if scheduled_currently.contains(&dependency.id) {
+                panic!("Dependency cycle!");
+            } else {
+                self.calc_layers_order_internal(
+                    scheduled_currently, layers_order, dependency.id);
+            }
         }
+        layers_order.push(current_id);
+    }
 
+    fn calc_layers_order(&mut self) -> Vec<LayerID> {
+        let mut scheduled_currently = HashSet::new();
+        let mut layers_order = Vec::new();
+
+        self.calc_layers_order_internal(
+            &mut scheduled_currently,
+            &mut layers_order,
+            self.output_layer());
+
+        return layers_order;
+    }
+
+    pub fn forward_propagation(&mut self, input_data: &[f64]) {
+        let layers_order = self.calc_layers_order();
         let input_id = self.input_layer();
         {
             let mut input_layer = self.get_layer_mut(input_id);
@@ -85,7 +104,7 @@ impl Network {
             Matrix::new(target.activations.rows, source.activations.rows).init_rand()
         };
         let layer_dependency = LayerDependency {
-            target: target_id,
+            id: target_id,
             weights: weights,
         };
         self.layers[source_id.0].dependencies.push(layer_dependency);
@@ -109,7 +128,7 @@ impl Layer {
 }
 
 struct LayerDependency {
-    target: LayerID,
+    id: LayerID,
     weights: Matrix,
 }
 
