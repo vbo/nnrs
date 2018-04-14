@@ -43,7 +43,7 @@ impl Network {
     fn get_layer(&self, id: LayerID) -> &Layer { &self.layers[id.0] }
 
     fn calc_layers_order_internal(
-        &mut self,
+        &self,
         scheduled_currently: &mut HashSet<LayerID>,
         layers_order: &mut Vec<LayerID>,
         current_id: LayerID
@@ -63,28 +63,27 @@ impl Network {
         layers_order.push(current_id);
     }
 
-    fn calc_layers_order(&mut self) -> Vec<LayerID> {
+    fn calc_layers_order(&self) -> Vec<LayerID> {
         let mut scheduled_currently = HashSet::new();
         let mut layers_order = Vec::new();
-
+        let output_layer = self.output_layer();
         self.calc_layers_order_internal(
             &mut scheduled_currently,
             &mut layers_order,
-            self.output_layer());
+            output_layer);
 
         return layers_order;
     }
 
     pub fn forward_propagation(&mut self, input_data: &[f64]) {
         let layers_order = self.calc_layers_order();
+
         let input_id = self.input_layer();
         {
             let mut input_layer = self.get_layer_mut(input_id);
             assert!(input_data.len() == input_layer.activations.rows, "Invalid input dimensions.");
             input_layer.activations.copy_from_slice(input_data);
         }
-
-        
     }
 
     pub fn add_hidden_layer(&mut self, rows: usize) -> LayerID {
@@ -132,3 +131,53 @@ struct LayerDependency {
     weights: Matrix,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layer_order_forward() {
+        let mut nn = Network::new(5, 2);
+        let inputs_id = nn.input_layer();
+        let l1_id = nn.add_hidden_layer(2);
+        let l2_id = nn.add_hidden_layer(2);
+        let outputs_id = nn.output_layer();
+        nn.add_layer_dependency(outputs_id, l2_id);
+        nn.add_layer_dependency(l2_id, l1_id);
+        nn.add_layer_dependency(l1_id, inputs_id);
+
+        let layer_order = nn.calc_layers_order();
+        assert_eq!(layer_order, vec!(LayerID(0), LayerID(2), LayerID(3), LayerID(1)))
+    }
+
+    #[test]
+    fn layer_order_skip() {
+        let mut nn = Network::new(5, 2);
+        let inputs_id = nn.input_layer();
+        let l1_id = nn.add_hidden_layer(2);
+        let l2_id = nn.add_hidden_layer(2);
+        let outputs_id = nn.output_layer();
+        nn.add_layer_dependency(outputs_id, l2_id);
+        nn.add_layer_dependency(outputs_id, l1_id);
+        nn.add_layer_dependency(l2_id, l1_id);
+        nn.add_layer_dependency(l2_id, inputs_id);
+        nn.add_layer_dependency(l1_id, inputs_id);
+
+        let layer_order = nn.calc_layers_order();
+        assert_eq!(layer_order, vec!(LayerID(0), LayerID(2), LayerID(3), LayerID(1)))
+    }
+
+    #[test]
+    #[should_panic(expected="Dependency cycle")]
+    fn layer_order_cycle() {
+        let mut nn = Network::new(5, 2);
+        let inputs_id = nn.input_layer();
+        let outputs_id = nn.output_layer();
+        let l1_id = nn.add_hidden_layer(2);
+        nn.add_layer_dependency(outputs_id, l1_id);
+        nn.add_layer_dependency(l1_id, inputs_id);
+        nn.add_layer_dependency(inputs_id, outputs_id);
+
+        let layer_order = nn.calc_layers_order();
+    }
+}
