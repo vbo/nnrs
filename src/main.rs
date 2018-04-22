@@ -90,6 +90,39 @@ fn main() {
     nn.add_layer_dependency(l1_id, inputs_id);
 
     let mut training_data = training_data::load_mnist();
+    assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
+    assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
+
+    let mut hits = 0usize;
+    let mut random_number_generator = rand::thread_rng();
+    let mut examples_processed = 0usize;
+    for current_epoch in 1..NUM_EPOCHS+1 {
+        // Randomize example order
+        random_number_generator.shuffle(
+            &mut training_data.example_indices.as_mut_slice());
+
+        let mut current_examples_cursor = 0usize;
+        while current_examples_cursor < training_data.examples_count {
+            // Load current example
+            let current_example_index = training_data.example_indices[current_examples_cursor];
+            let input_data_offset = current_example_index*training_data.input_size;
+            let input_data_end = input_data_offset + training_data.input_size;
+            let input_data = &training_data.input_mem[input_data_offset..input_data_end];
+
+            let label_data_offset = current_example_index*training_data.label_size;
+            let label_data_end = label_data_offset + training_data.label_size;
+            let label_data = &training_data.label_mem[label_data_offset..label_data_end];
+
+            nn.forward_propagation(input_data);
+            break;
+        }
+
+        break;
+    }
+}
+
+fn old_main() {
+    let mut training_data = training_data::load_mnist();
 
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
@@ -157,8 +190,6 @@ fn main() {
             let label_data = &training_data.label_mem[label_data_offset..label_data_end];
             inputs.copy_from_slice(input_data);
             true_outputs.copy_from_slice(label_data);
-
-            nn.forward_propagation(input_data);
 
             // Forward propagation
             l1_weights.dot_vec(&inputs, &mut l1_activations);

@@ -1,6 +1,7 @@
 use math::Matrix;
 use math::Vector;
 use std::fmt;
+use std::mem;
 use std::collections::HashSet;
 
 pub struct Network {
@@ -40,6 +41,9 @@ impl Network {
     pub fn input_layer(&self) -> LayerID { self.input_layer }
     pub fn output_layer(&self) -> LayerID { self.output_layer }
     fn get_layer_mut(&mut self, id: LayerID) -> &mut Layer { &mut self.layers[id.0] }
+    fn get_layer_activations_mut(&mut self, id: LayerID) -> &mut Vector {
+        &mut self.layers[id.0].activations
+    }
     fn get_layer(&self, id: LayerID) -> &Layer { &self.layers[id.0] }
 
     fn calc_layers_order_internal(
@@ -75,14 +79,56 @@ impl Network {
         return layers_order;
     }
 
+    fn get_layer_activations_owned(&mut self, layer_id: LayerID) -> Vector {
+        let layer = &mut self.layers[layer_id.0];
+        let mut tmp = Vector::empty();
+        mem::swap(&mut tmp, &mut layer.activations);
+        return tmp;
+    }
+
+    fn set_layer_activations_owned(&mut self, layer_id: LayerID, mut activations: Vector) {
+        let layer = &mut self.layers[layer_id.0];
+        mem::swap(&mut activations, &mut layer.activations);
+    }
+
+    fn compute_layer_forward(&mut self, layer_id: LayerID) {
+        let mut activations = self.get_layer_activations_owned(layer_id);
+        println!("A:   {:?}", activations);
+        {
+            let layer = self.get_layer(layer_id);
+            let layer_dependencies = &self.get_layer(layer_id).dependencies;
+            let mut activations_from_dep = Vector::new(activations.rows)
+                                                  .init_with(0.0);
+
+            for dependency in layer_dependencies {
+                let dep_activations = &self.get_layer(dependency.id).activations;
+                let weights = &dependency.weights;
+                weights.dot_vec(dep_activations, &mut activations_from_dep);
+                activations.add_to_me(&activations_from_dep);
+            }
+            activations.apply(|x| {x + layer.bias});
+            println!("A:   {:?}", activations);
+        }
+        self.set_layer_activations_owned(layer_id, activations);
+    }
+
     pub fn forward_propagation(&mut self, input_data: &[f64]) {
         let layers_order = self.calc_layers_order();
 
-        let input_id = self.input_layer();
         {
+            let input_id = self.input_layer();
             let mut input_layer = self.get_layer_mut(input_id);
             assert!(input_data.len() == input_layer.activations.rows, "Invalid input dimensions.");
             input_layer.activations.copy_from_slice(input_data);
+        }
+
+        println!("Layers order: {:?}", layers_order);
+        for layer_id in layers_order {
+            println!("Computing layer {}", layer_id);
+            match self.get_layer_mut(layer_id).kind {
+                LayerKind::Input => continue,
+                _ => self.compute_layer_forward(layer_id),
+            }
         }
     }
 
@@ -100,7 +146,7 @@ impl Network {
         let weights = {
             let source = &self.layers[source_id.0];
             let target = &self.layers[target_id.0];
-            Matrix::new(target.activations.rows, source.activations.rows).init_rand()
+            Matrix::new(source.activations.rows, target.activations.rows).init_rand()
         };
         let layer_dependency = LayerDependency {
             id: target_id,
@@ -114,6 +160,7 @@ struct Layer {
     kind: LayerKind,
     activations: Vector,
     dependencies: Vec<LayerDependency>,
+    bias: f64
 }
 
 impl Layer {
@@ -122,6 +169,7 @@ impl Layer {
             kind: kind,
             activations: Vector::new(rows).init_with(0.0),
             dependencies: Vec::new(),
+            bias: 0.0f64
         }
     }
 }
@@ -130,6 +178,7 @@ struct LayerDependency {
     id: LayerID,
     weights: Matrix,
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -147,7 +196,7 @@ mod tests {
         nn.add_layer_dependency(l1_id, inputs_id);
 
         let layer_order = nn.calc_layers_order();
-        assert_eq!(layer_order, vec!(LayerID(0), LayerID(2), LayerID(3), LayerID(1)))
+        assert_eq!(layer_order, vec!(inputs_id, l1_id, l2_id, outputs_id))
     }
 
     #[test]
@@ -164,7 +213,7 @@ mod tests {
         nn.add_layer_dependency(l1_id, inputs_id);
 
         let layer_order = nn.calc_layers_order();
-        assert_eq!(layer_order, vec!(LayerID(0), LayerID(2), LayerID(3), LayerID(1)))
+        assert_eq!(layer_order, vec!(inputs_id, l1_id, l2_id, outputs_id))
     }
 
     #[test]

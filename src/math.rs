@@ -42,7 +42,7 @@ impl Matrix {
     pub fn dot_vec(&self, vec: &Vector, res: &mut Vector) {
         assert!(
             self.rows == res.rows && self.cols == vec.rows,
-            "Dimentions invalid for product: \
+            "Dimensions invalid for product: \
              Matrix {}x{} * Vector {}x1 = Vector {}x1",
             self.rows, self.cols, vec.rows, res.rows);
 
@@ -59,7 +59,7 @@ impl Matrix {
     pub fn sub(&mut self, mat: &Matrix) {
         assert!(
             self.rows == mat.rows && self.cols == mat.cols,
-            "Dimentions invalid for sub: \
+            "Dimensions invalid for sub: \
              {}x{} != {}x{}",
             self.rows, self.cols, mat.rows, mat.cols);
 
@@ -71,7 +71,7 @@ impl Matrix {
     pub fn add(&mut self, mat: &Matrix) {
         assert!(
             self.rows == mat.rows && self.cols == mat.cols,
-            "Dimentions invalid for add: \
+            "Dimensions invalid for add: \
              {}x{} != {}x{}",
             self.rows, self.cols, mat.rows, mat.cols);
 
@@ -90,7 +90,7 @@ impl Matrix {
     pub fn transpose(&self, res: &mut Matrix) {
         assert!(
             self.rows == res.cols && self.cols == res.rows,
-            "Dimentions invalid for transpose: {}x{}.T = {}x{}",
+            "Dimensions invalid for transpose: {}x{}.T = {}x{}",
             self.rows, self.cols, res.rows, res.cols);
 
         for source_row in 0..self.rows {
@@ -150,6 +150,13 @@ impl Vector {
         };
     }
 
+    pub fn empty() -> Self {
+        return Self {
+            mem: Vec::new(),
+            rows: 0,
+        }
+    }
+
     pub fn init_with(mut self, val: f64) -> Self {
         for _ in 0..self.rows {
             self.mem.push(val);
@@ -177,14 +184,14 @@ impl Vector {
 
     pub fn copy_from(&mut self, v: &Vector) {
         assert!(self.rows == v.rows,
-                "Invalid dimentions for copy_from: {}x1 vs {}x1",
+                "Invalid dimensions for copy_from: {}x1 vs {}x1",
                 self.rows, v.rows); 
         self.mem = v.mem.to_vec();
     }
 
     pub fn copy_from_slice(&mut self, s: &[f64]) {
         assert!(self.rows == s.len(),
-                "Invalid dimentions for copy_from_slice: {}x1 vs {}x1",
+                "Invalid dimensions for copy_from_slice: {}x1 vs {}x1",
                 self.rows, s.len()); 
         for i in 0..self.rows {
             self.mem[i] = s[i];
@@ -193,7 +200,7 @@ impl Vector {
 
     pub fn sub(&self, v: &Vector, res: &mut Vector) {
         assert!(self.rows == v.rows && self.rows == res.rows,
-                "Invalid dimentions for sub: {}x1 - {}x1 = {}x1",
+                "Invalid dimensions for sub: {}x1 - {}x1 = {}x1",
                 self.rows, v.rows, res.rows);
 
         for row in 0..self.rows {
@@ -203,7 +210,7 @@ impl Vector {
 
     pub fn add_to_me(&mut self, v: &Vector) {
         assert!(self.rows == v.rows,
-                "Invalid dimentions for add: {}x1 + {}x1",
+                "Invalid dimensions for add: {}x1 + {}x1",
                 self.rows, v.rows);
 
         for row in 0..self.rows {
