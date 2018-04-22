@@ -107,9 +107,9 @@ impl Network {
                 let weights = &dependency.weights;
                 weights.dot_vec(dep_activations, &mut activations_from_dep);
                 activations.add_to_me(&activations_from_dep);
-                activations.apply(sigmoid);
             }
             activations.apply(|x| {x + layer.bias});
+            activations.apply(sigmoid);
             println!("A:   {:?}", activations);
         }
         self.set_layer_activations_owned(layer_id, activations);
