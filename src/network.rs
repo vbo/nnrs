@@ -24,6 +24,8 @@ enum LayerKind {
     Hidden,
 }
 
+fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
+
 impl Network {
     pub fn new(input_size: usize, output_size: usize) -> Self {
         Network {
@@ -105,6 +107,7 @@ impl Network {
                 let weights = &dependency.weights;
                 weights.dot_vec(dep_activations, &mut activations_from_dep);
                 activations.add_to_me(&activations_from_dep);
+                activations.apply(sigmoid);
             }
             activations.apply(|x| {x + layer.bias});
             println!("A:   {:?}", activations);
