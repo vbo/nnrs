@@ -20,8 +20,14 @@ impl Matrix {
         };
     }
 
+    pub fn new_same_dim(m: &Matrix) -> Self {
+        let cols = m.cols;
+        let rows = m.rows;
+        return Matrix::new(rows, cols);
+    }
+
     pub fn init_with(mut self, val: f64) -> Self {
-        for _ in 0..self.rows*self.cols {
+        for _ in 0..self.rows * self.cols {
             self.mem.push(val);
         }
 
@@ -32,7 +38,7 @@ impl Matrix {
         let mut rng = rand::thread_rng();
         let range = Range::new(-0.5, 0.5);
 
-        for _ in 0..self.rows*self.cols {
+        for _ in 0..self.rows * self.cols {
             self.mem.push(range.ind_sample(&mut rng));
         }
 
@@ -44,11 +50,34 @@ impl Matrix {
             self.rows == res.rows && self.cols == vec.rows,
             "Dimensions invalid for product: \
              Matrix {}x{} * Vector {}x1 = Vector {}x1",
-            self.rows, self.cols, vec.rows, res.rows);
+            self.rows,
+            self.cols,
+            vec.rows,
+            res.rows
+        );
 
         for row in 0..res.rows {
-            let mat_row_start = row*self.cols;
+            let mat_row_start = row * self.cols;
             res.mem[row] = 0.0;
+            for col in 0..self.cols {
+                res.mem[row] += self.mem[mat_row_start + col] * vec.mem[col];
+            }
+        }
+    }
+
+    pub fn add_dot_vec(&self, vec: &Vector, res: &mut Vector) {
+        assert!(
+            self.rows == res.rows && self.cols == vec.rows,
+            "Dimensions invalid for add product: \
+             Matrix {}x{} * Vector {}x1 = Vector {}x1",
+            self.rows,
+            self.cols,
+            vec.rows,
+            res.rows
+        );
+
+        for row in 0..res.rows {
+            let mat_row_start = row * self.cols;
             for col in 0..self.cols {
                 res.mem[row] += self.mem[mat_row_start + col] * vec.mem[col];
             }
@@ -61,9 +90,13 @@ impl Matrix {
             self.rows == mat.rows && self.cols == mat.cols,
             "Dimensions invalid for sub: \
              {}x{} != {}x{}",
-            self.rows, self.cols, mat.rows, mat.cols);
+            self.rows,
+            self.cols,
+            mat.rows,
+            mat.cols
+        );
 
-        for i in 0..self.rows*self.cols {
+        for i in 0..self.rows * self.cols {
             self.mem[i] -= mat.mem[i];
         }
     }
@@ -73,16 +106,22 @@ impl Matrix {
             self.rows == mat.rows && self.cols == mat.cols,
             "Dimensions invalid for add: \
              {}x{} != {}x{}",
-            self.rows, self.cols, mat.rows, mat.cols);
+            self.rows,
+            self.cols,
+            mat.rows,
+            mat.cols
+        );
 
-        for i in 0..self.rows*self.cols {
+        for i in 0..self.rows * self.cols {
             self.mem[i] += mat.mem[i];
         }
     }
 
     pub fn apply<F>(&mut self, f: &F)
-                    where F: Fn(f64) -> f64 {
-        for i in 0..self.rows*self.cols {
+    where
+        F: Fn(f64) -> f64,
+    {
+        for i in 0..self.rows * self.cols {
             self.mem[i] = f(self.mem[i]);
         }
     }
@@ -91,15 +130,19 @@ impl Matrix {
         assert!(
             self.rows == res.cols && self.cols == res.rows,
             "Dimensions invalid for transpose: {}x{}.T = {}x{}",
-            self.rows, self.cols, res.rows, res.cols);
+            self.rows,
+            self.cols,
+            res.rows,
+            res.cols
+        );
 
         for source_row in 0..self.rows {
             let res_col = source_row;
-            let source_row_start = source_row*self.cols;
+            let source_row_start = source_row * self.cols;
             for source_col in 0..self.cols {
                 let res_row = source_col;
                 let source_val = self.mem[source_row_start + source_col];
-                res.mem[res_row*res.cols + res_col] = source_val;
+                res.mem[res_row * res.cols + res_col] = source_val;
             }
         }
     }
@@ -111,19 +154,16 @@ impl fmt::Display for Matrix {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Matrix {}x{}:\n", self.rows, self.cols).expect(&WRITE_ERR);
         for row in 0..self.rows {
-            let row_start = row*self.cols;
+            let row_start = row * self.cols;
             for col in 0..self.cols {
                 write!(f, "{:8.4}", self.mem[row_start + col]).expect(&WRITE_ERR);
-
             }
             write!(f, "\n").expect(&WRITE_ERR);
-
         }
 
         return Ok(());
     }
 }
-
 
 #[derive(Debug)]
 pub struct Vector {
@@ -154,7 +194,7 @@ impl Vector {
         return Self {
             mem: Vec::new(),
             rows: 0,
-        }
+        };
     }
 
     pub fn init_with(mut self, val: f64) -> Self {
@@ -176,32 +216,44 @@ impl Vector {
     }
 
     pub fn apply<F>(&mut self, f: F)
-                    where F: Fn(f64) -> f64 {
+    where
+        F: Fn(f64) -> f64,
+    {
         for row in 0..self.rows {
             self.mem[row] = f(self.mem[row]);
         }
     }
 
     pub fn copy_from(&mut self, v: &Vector) {
-        assert!(self.rows == v.rows,
-                "Invalid dimensions for copy_from: {}x1 vs {}x1",
-                self.rows, v.rows); 
+        assert!(
+            self.rows == v.rows,
+            "Invalid dimensions for copy_from: {}x1 vs {}x1",
+            self.rows,
+            v.rows
+        );
         self.mem = v.mem.to_vec();
     }
 
     pub fn copy_from_slice(&mut self, s: &[f64]) {
-        assert!(self.rows == s.len(),
-                "Invalid dimensions for copy_from_slice: {}x1 vs {}x1",
-                self.rows, s.len()); 
+        assert!(
+            self.rows == s.len(),
+            "Invalid dimensions for copy_from_slice: {}x1 vs {}x1",
+            self.rows,
+            s.len()
+        );
         for i in 0..self.rows {
             self.mem[i] = s[i];
         }
     }
 
     pub fn sub(&self, v: &Vector, res: &mut Vector) {
-        assert!(self.rows == v.rows && self.rows == res.rows,
-                "Invalid dimensions for sub: {}x1 - {}x1 = {}x1",
-                self.rows, v.rows, res.rows);
+        assert!(
+            self.rows == v.rows && self.rows == res.rows,
+            "Invalid dimensions for sub: {}x1 - {}x1 = {}x1",
+            self.rows,
+            v.rows,
+            res.rows
+        );
 
         for row in 0..self.rows {
             res.mem[row] = self.mem[row] - v.mem[row];
@@ -209,9 +261,12 @@ impl Vector {
     }
 
     pub fn add_to_me(&mut self, v: &Vector) {
-        assert!(self.rows == v.rows,
-                "Invalid dimensions for add: {}x1 + {}x1",
-                self.rows, v.rows);
+        assert!(
+            self.rows == v.rows,
+            "Invalid dimensions for add: {}x1 + {}x1",
+            self.rows,
+            v.rows
+        );
 
         for row in 0..self.rows {
             self.mem[row] = self.mem[row] + v.mem[row];
@@ -227,10 +282,16 @@ impl Vector {
         }
     }
 
+    pub fn fill_with(&mut self, v: f64) {
+        for i in 0..self.rows {
+            self.mem[i] = v;
+        }
+    }
+
     pub fn calc_length(&self) -> f64 {
         let mut res: f64 = 0.0;
         for i in 0..self.rows {
-            res += self.mem[i]*self.mem[i];
+            res += self.mem[i] * self.mem[i];
         }
         return res.sqrt();
     }
@@ -258,4 +319,3 @@ impl Vector {
         return (max_i, max);
     }
 }
-

@@ -24,7 +24,9 @@ enum LayerKind {
     Hidden,
 }
 
-fn sigmoid(x: f64) -> f64 { 1.0 / ((-x).exp() + 1.0) }
+fn sigmoid(x: f64) -> f64 {
+    1.0 / ((-x).exp() + 1.0)
+}
 
 impl Network {
     pub fn new(input_size: usize, output_size: usize) -> Self {
@@ -40,19 +42,41 @@ impl Network {
         }
     }
 
-    pub fn input_layer(&self) -> LayerID { self.input_layer }
-    pub fn output_layer(&self) -> LayerID { self.output_layer }
-    fn get_layer_mut(&mut self, id: LayerID) -> &mut Layer { &mut self.layers[id.0] }
+    pub fn input_layer(&self) -> LayerID {
+        self.input_layer
+    }
+    pub fn output_layer(&self) -> LayerID {
+        self.output_layer
+    }
+    fn get_layer_mut(&mut self, id: LayerID) -> &mut Layer {
+        &mut self.layers[id.0]
+    }
     fn get_layer_activations_mut(&mut self, id: LayerID) -> &mut Vector {
         &mut self.layers[id.0].activations
     }
-    fn get_layer(&self, id: LayerID) -> &Layer { &self.layers[id.0] }
+    fn get_layer(&self, id: LayerID) -> &Layer {
+        &self.layers[id.0]
+    }
+
+    /// Layers vector is parallel to layer.dependencies.
+    fn get_layer_and_deps_mut(&mut self, layer_id: LayerID) -> (&mut Layer, Vec<&mut Layer>) {
+        // NOTE(vbo): maybe separate Nodes and Weights to different vectors.
+        let layers_buf: *mut Layer = self.layers.as_mut_ptr();
+        let cur_layer: *mut Layer = unsafe { layers_buf.offset(layer_id.0 as isize) };
+        let mut deps_layers_vec = Vec::with_capacity(self.get_layer(layer_id).dependencies.len());
+        for dep in &mut self.get_layer_mut(layer_id).dependencies {
+            let dep_layer: *mut Layer = unsafe { layers_buf.offset(dep.id.0 as isize) };
+            deps_layers_vec.push(unsafe { &mut *dep_layer });
+        }
+
+        return (unsafe { &mut *cur_layer }, deps_layers_vec);
+    }
 
     fn calc_layers_order_internal(
         &self,
         scheduled_currently: &mut HashSet<LayerID>,
         layers_order: &mut Vec<LayerID>,
-        current_id: LayerID
+        current_id: LayerID,
     ) {
         scheduled_currently.insert(current_id);
         for dependency in &self.get_layer(current_id).dependencies {
@@ -62,8 +86,7 @@ impl Network {
             if scheduled_currently.contains(&dependency.id) {
                 panic!("Dependency cycle!");
             } else {
-                self.calc_layers_order_internal(
-                    scheduled_currently, layers_order, dependency.id);
+                self.calc_layers_order_internal(scheduled_currently, layers_order, dependency.id);
             }
         }
         layers_order.push(current_id);
@@ -73,10 +96,7 @@ impl Network {
         let mut scheduled_currently = HashSet::new();
         let mut layers_order = Vec::new();
         let output_layer = self.output_layer();
-        self.calc_layers_order_internal(
-            &mut scheduled_currently,
-            &mut layers_order,
-            output_layer);
+        self.calc_layers_order_internal(&mut scheduled_currently, &mut layers_order, output_layer);
 
         return layers_order;
     }
@@ -94,25 +114,19 @@ impl Network {
     }
 
     fn compute_layer_forward(&mut self, layer_id: LayerID) {
-        let mut activations = self.get_layer_activations_owned(layer_id);
+        let (layer, dep_layers) = self.get_layer_and_deps_mut(layer_id);
+        let layer_bias = layer.bias;
+        let activations = &mut layer.activations;
+        activations.fill_with(0.0);
         println!("A:   {:?}", activations);
-        {
-            let layer = self.get_layer(layer_id);
-            let layer_dependencies = &self.get_layer(layer_id).dependencies;
-            let mut activations_from_dep = Vector::new(activations.rows)
-                                                  .init_with(0.0);
-
-            for dependency in layer_dependencies {
-                let dep_activations = &self.get_layer(dependency.id).activations;
-                let weights = &dependency.weights;
-                weights.dot_vec(dep_activations, &mut activations_from_dep);
-                activations.add_to_me(&activations_from_dep);
-            }
-            activations.apply(|x| {x + layer.bias});
-            activations.apply(sigmoid);
-            println!("A:   {:?}", activations);
+        for (dep_index, dependency) in layer.dependencies.iter_mut().enumerate() {
+            let dep_activations = &dep_layers[dep_index].activations;
+            let weights = &dependency.weights;
+            weights.add_dot_vec(dep_activations, activations);
         }
-        self.set_layer_activations_owned(layer_id, activations);
+        activations.apply(|x| x + layer_bias);
+        activations.apply(sigmoid);
+        println!("A:   {:?}", activations);
     }
 
     pub fn forward_propagation(&mut self, input_data: &[f64]) {
@@ -121,7 +135,10 @@ impl Network {
         {
             let input_id = self.input_layer();
             let mut input_layer = self.get_layer_mut(input_id);
-            assert!(input_data.len() == input_layer.activations.rows, "Invalid input dimensions.");
+            assert!(
+                input_data.len() == input_layer.activations.rows,
+                "Invalid input dimensions."
+            );
             input_layer.activations.copy_from_slice(input_data);
         }
 
@@ -135,15 +152,120 @@ impl Network {
         }
     }
 
+    pub fn backward_propagation(&mut self, true_outputs: &Vector) {
+        // TODO(vbo): calculate order once and reuse, invalidate on adding
+        // layers / dependencies
+        let mut layers_order = self.calc_layers_order();
+        layers_order.reverse();
+
+        for layer in &mut self.layers {
+            layer.error.fill_with(0.0);
+        }
+
+        // Compute output error.
+        let output_layer_id = self.output_layer();
+        {
+            let mut output_layer = self.get_layer_mut(output_layer_id);
+            assert!(
+                true_outputs.rows == output_layer.activations.rows,
+                "Labels size mismatch with output layer: {} != {}",
+                true_outputs.rows,
+                output_layer.activations.rows
+            );
+
+            true_outputs.sub(&output_layer.activations, &mut output_layer.error);
+        }
+
+        println!("Layers order: {:?}", layers_order);
+        for layer_id in layers_order {
+            println!("Computing layer {}", layer_id);
+            match self.get_layer(layer_id).kind {
+                LayerKind::Input => continue,
+                _ => self.compute_layer_backward(layer_id),
+            }
+        }
+    }
+
+    fn calc_grad_prefix(activations: &Vector, error: &Vector, res: &mut Vector) {
+        assert!(
+            activations.rows == error.rows && error.rows == res.rows,
+            "Invalid dimentions for output error grad prefix PD: {}x1, {}x1, {}x1",
+            activations.rows,
+            error.rows,
+            res.rows
+        );
+
+        for row in 0..activations.rows {
+            res.mem[row] =
+                2.0 * error.mem[row] * activations.mem[row] * (1.0 - activations.mem[row]);
+        }
+    }
+
+    fn calc_weights_pd(
+        error_grad_prefix: &Vector,
+        previous_activations: &Vector,
+        res: &mut Matrix,
+    ) {
+        assert!(
+            error_grad_prefix.rows == res.rows && res.cols == previous_activations.rows,
+            "Invalid dimentions for output weights PD: {}x1, {}x1, {}x{}",
+            error_grad_prefix.rows,
+            previous_activations.rows,
+            res.rows,
+            res.cols
+        );
+
+        for row in 0..res.rows {
+            let row_start = row * res.cols;
+            for col in 0..res.cols {
+                res.mem[row_start + col] =
+                    error_grad_prefix.mem[row] * previous_activations.mem[col];
+            }
+        }
+    }
+
+    fn compute_layer_backward(&mut self, layer_id: LayerID) {
+        let (layer, mut dep_layers) = self.get_layer_and_deps_mut(layer_id);
+        let mut grad_prefix = Vector::new(layer.activations.rows).init_with(0.0);
+        Network::calc_grad_prefix(&layer.activations, &layer.error, &mut grad_prefix);
+        layer.bias_batch_pd += grad_prefix.calc_sum();
+        for (dep_index, dependency) in layer.dependencies.iter_mut().enumerate() {
+            let mut weights_pd = Matrix::new_same_dim(&dependency.weights_batch_pd).init_with(0.0);
+            Network::calc_weights_pd(
+                &grad_prefix,
+                &dep_layers[dep_index].activations,
+                &mut weights_pd,
+            );
+            dependency.weights_batch_pd.add(&weights_pd);
+            let mut weights_t =
+                Matrix::new(dependency.weights.cols, dependency.weights.rows).init_with(0.0);
+            dependency.weights.transpose(&mut weights_t);
+            weights_t.add_dot_vec(&grad_prefix, &mut dep_layers[dep_index].error);
+        }
+    }
+
     pub fn add_hidden_layer(&mut self, rows: usize) -> LayerID {
         self.layers.push(Layer::new(LayerKind::Hidden, rows));
         return LayerID(self.layers.len() - 1);
     }
 
     pub fn add_layer_dependency(&mut self, source_id: LayerID, target_id: LayerID) {
-        assert!(source_id.0 != target_id.0, "Self dependency is not allowed for {}", source_id);
+        assert!(
+            source_id.0 != target_id.0,
+            "Self dependency is not allowed for {}",
+            source_id
+        );
         assert!(source_id.0 < self.layers.len(), "Invalid dependency source");
         assert!(target_id.0 < self.layers.len(), "Invalid dependency target");
+
+        let mut dup_found = false;
+        for dep in &self.layers[source_id.0].dependencies {
+            if dep.id == target_id {
+                dup_found = true;
+            }
+        }
+        assert!(!dup_found, "Duplicate dependency");
+
         // TODO(parallel): Matrices can be shared between threads readonly, while
         // activations we need to copy.
         let weights = {
@@ -154,6 +276,10 @@ impl Network {
         let layer_dependency = LayerDependency {
             id: target_id,
             weights: weights,
+            weights_batch_pd: Matrix::new(
+                self.layers[source_id.0].activations.rows,
+                self.layers[target_id.0].activations.rows,
+            ).init_with(0.0),
         };
         self.layers[source_id.0].dependencies.push(layer_dependency);
     }
@@ -161,9 +287,13 @@ impl Network {
 
 struct Layer {
     kind: LayerKind,
-    activations: Vector,
     dependencies: Vec<LayerDependency>,
-    bias: f64
+    bias: f64,
+    // The following is needed only at evaluation and training time
+    activations: Vector,
+    // Following is needed only at training time
+    error: Vector,
+    bias_batch_pd: f64,
 }
 
 impl Layer {
@@ -172,7 +302,9 @@ impl Layer {
             kind: kind,
             activations: Vector::new(rows).init_with(0.0),
             dependencies: Vec::new(),
-            bias: 0.0f64
+            bias: 0.0,
+            error: Vector::new(rows).init_with(0.0),
+            bias_batch_pd: 0.0,
         }
     }
 }
@@ -180,8 +312,8 @@ impl Layer {
 struct LayerDependency {
     id: LayerID,
     weights: Matrix,
+    weights_batch_pd: Matrix,
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -199,7 +331,7 @@ mod tests {
         nn.add_layer_dependency(l1_id, inputs_id);
 
         let layer_order = nn.calc_layers_order();
-        assert_eq!(layer_order, vec!(inputs_id, l1_id, l2_id, outputs_id))
+        assert_eq!(layer_order, vec![inputs_id, l1_id, l2_id, outputs_id])
     }
 
     #[test]
@@ -216,11 +348,11 @@ mod tests {
         nn.add_layer_dependency(l1_id, inputs_id);
 
         let layer_order = nn.calc_layers_order();
-        assert_eq!(layer_order, vec!(inputs_id, l1_id, l2_id, outputs_id))
+        assert_eq!(layer_order, vec![inputs_id, l1_id, l2_id, outputs_id])
     }
 
     #[test]
-    #[should_panic(expected="Dependency cycle")]
+    #[should_panic(expected = "Dependency cycle")]
     fn layer_order_cycle() {
         let mut nn = Network::new(5, 2);
         let inputs_id = nn.input_layer();

@@ -2,7 +2,7 @@ extern crate byteorder;
 
 use std::fs::File;
 use std::io::Read;
-use self::byteorder::{ByteOrder, BigEndian};
+use self::byteorder::{BigEndian, ByteOrder};
 
 pub struct TrainingData {
     pub input_mem: Vec<f64>,
@@ -11,6 +11,22 @@ pub struct TrainingData {
     pub examples_count: usize,
     pub input_size: usize,
     pub label_size: usize,
+}
+
+impl TrainingData {
+    pub fn slices_for_cursor(&self, cursor: usize) -> (&[f64], &[f64]) {
+        let current_example_index = self.example_indices[cursor];
+
+        let input_data_offset = current_example_index * self.input_size;
+        let input_data_end = input_data_offset + self.input_size;
+        let input_data = &self.input_mem[input_data_offset..input_data_end];
+
+        let label_data_offset = current_example_index * self.label_size;
+        let label_data_end = label_data_offset + self.label_size;
+        let label_data = &self.label_mem[label_data_offset..label_data_end];
+
+        return (input_data, label_data);
+    }
 }
 
 pub fn load_mnist() -> TrainingData {
@@ -24,10 +40,10 @@ pub fn load_mnist() -> TrainingData {
     let rows = BigEndian::read_i32(&header_buf[8..]) as usize;
     let cols = BigEndian::read_i32(&header_buf[12..]) as usize;
 
-    let input_size = rows*cols;
-    let images_data_size = images_count*input_size;
+    let input_size = rows * cols;
+    let images_data_size = images_count * input_size;
     let mut images_data = Vec::<f64>::with_capacity(images_data_size);
-    let mut read_buf = [0u8; 1024*1024];
+    let mut read_buf = [0u8; 1024 * 1024];
     loop {
         let bytes_read = images_file.read(&mut read_buf).unwrap();
         if bytes_read == 0 {
@@ -35,7 +51,7 @@ pub fn load_mnist() -> TrainingData {
         }
 
         for i in 0..bytes_read {
-            images_data.push((read_buf[i] as f64)/255.0);
+            images_data.push((read_buf[i] as f64) / 255.0);
         }
     }
 
@@ -45,11 +61,13 @@ pub fn load_mnist() -> TrainingData {
     labels_file.read_exact(&mut header_buf).unwrap();
     let labels_count = BigEndian::read_i32(&header_buf[4..]) as usize;
 
-    assert!(labels_count == images_count,
-            "Invalid training data. Labels count != inputs count");
+    assert!(
+        labels_count == images_count,
+        "Invalid training data. Labels count != inputs count"
+    );
 
     let label_size = 10usize;
-    let labels_data_size = labels_count*label_size;
+    let labels_data_size = labels_count * label_size;
     let mut labels_data = Vec::<f64>::with_capacity(labels_data_size);
 
     loop {
