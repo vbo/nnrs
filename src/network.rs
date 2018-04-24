@@ -134,7 +134,7 @@ impl Network {
         activations.apply(sigmoid);
     }
 
-    pub fn evaluate(&mut self, input_data: &[f64]) -> &Vector {
+    pub fn predict(&mut self, input_data: &[f64]) -> &Vector {
         let layers_order = self.calc_layers_order();
 
         {

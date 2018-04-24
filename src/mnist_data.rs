@@ -32,13 +32,15 @@ impl Dataset {
 pub fn load_mnist_testing() -> Dataset {
     load_mnist(
         "data/t10k-images-idx3-ubyte.bin",
-        "data/t10k-labels-idx1-ubyte.bin")
+        "data/t10k-labels-idx1-ubyte.bin",
+    )
 }
 
 pub fn load_mnist_training() -> Dataset {
     load_mnist(
         "data/train-images-idx3-ubyte.bin",
-        "data/train-labels-idx1-ubyte.bin")
+        "data/train-labels-idx1-ubyte.bin",
+    )
 }
 
 pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> Dataset {

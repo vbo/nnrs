@@ -9,8 +9,8 @@ mod math;
 use math::Matrix;
 use math::Vector;
 
-mod training_data;
-use training_data::TrainingData;
+mod mnist_data;
+use mnist_data::Dataset;
 
 mod network;
 use network::Network;
@@ -92,7 +92,7 @@ fn main() {
     nn.add_layer_dependency(l2_id, l1_id);
     nn.add_layer_dependency(l1_id, inputs_id);
 
-    let mut training_data = training_data::load_mnist();
+    let mut training_data = mnist_data::load_mnist_training();
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
 
@@ -110,7 +110,7 @@ fn main() {
         while current_examples_cursor < training_data.examples_count {
             let (input_data, label_data) = training_data.slices_for_cursor(current_examples_cursor);
             true_outputs.copy_from_slice(label_data);
-            let outputs = nn.evaluate(input_data).clone();
+            let outputs = nn.predict(input_data).clone();
             nn.backward_propagation(&true_outputs);
 
             // Update accuracy metrics
@@ -148,7 +148,7 @@ fn main() {
 }
 
 fn old_main() {
-    let mut training_data = training_data::load_mnist();
+    let mut training_data = mnist_data::load_mnist_training();
 
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
