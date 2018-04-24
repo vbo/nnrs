@@ -4,6 +4,9 @@ use std::fmt;
 use std::mem;
 use std::collections::HashSet;
 
+const LEARNING_RATE: f64 = 0.1;
+pub const BATCH_SIZE: usize = 1000;
+
 pub struct Network {
     layers: Vec<Layer>,
     input_layer: LayerID,
@@ -26,6 +29,10 @@ enum LayerKind {
 
 fn sigmoid(x: f64) -> f64 {
     1.0 / ((-x).exp() + 1.0)
+}
+
+fn avg_by_batch(x: f64) -> f64 {
+    x * LEARNING_RATE / BATCH_SIZE as f64
 }
 
 impl Network {
@@ -118,7 +125,6 @@ impl Network {
         let layer_bias = layer.bias;
         let activations = &mut layer.activations;
         activations.fill_with(0.0);
-        println!("A:   {:?}", activations);
         for (dep_index, dependency) in layer.dependencies.iter_mut().enumerate() {
             let dep_activations = &dep_layers[dep_index].activations;
             let weights = &dependency.weights;
@@ -126,10 +132,9 @@ impl Network {
         }
         activations.apply(|x| x + layer_bias);
         activations.apply(sigmoid);
-        println!("A:   {:?}", activations);
     }
 
-    pub fn forward_propagation(&mut self, input_data: &[f64]) {
+    pub fn evaluate(&mut self, input_data: &[f64]) -> &Vector {
         let layers_order = self.calc_layers_order();
 
         {
@@ -142,14 +147,14 @@ impl Network {
             input_layer.activations.copy_from_slice(input_data);
         }
 
-        println!("Layers order: {:?}", layers_order);
         for layer_id in layers_order {
-            println!("Computing layer {}", layer_id);
             match self.get_layer_mut(layer_id).kind {
                 LayerKind::Input => continue,
                 _ => self.compute_layer_forward(layer_id),
             }
         }
+
+        return &self.get_layer(self.output_layer()).activations;
     }
 
     pub fn backward_propagation(&mut self, true_outputs: &Vector) {
@@ -176,9 +181,7 @@ impl Network {
             true_outputs.sub(&output_layer.activations, &mut output_layer.error);
         }
 
-        println!("Layers order: {:?}", layers_order);
         for layer_id in layers_order {
-            println!("Computing layer {}", layer_id);
             match self.get_layer(layer_id).kind {
                 LayerKind::Input => continue,
                 _ => self.compute_layer_backward(layer_id),
@@ -282,6 +285,21 @@ impl Network {
             ).init_with(0.0),
         };
         self.layers[source_id.0].dependencies.push(layer_dependency);
+    }
+
+    /// Weights adjustment from info accumulated during backward propagation calls.
+    /// Will also reset this info, preparing for a new batch.
+    pub fn apply_batch(&mut self) {
+        for layer in &mut self.layers {
+            layer.bias += avg_by_batch(layer.bias_batch_pd);
+            layer.bias_batch_pd = 0.0;
+
+            for dependency in &mut layer.dependencies {
+                dependency.weights_batch_pd.apply(&avg_by_batch);
+                dependency.weights.add(&dependency.weights_batch_pd);
+                dependency.weights_batch_pd.fill_with(0.0);
+            }
+        }
     }
 }
 

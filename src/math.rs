@@ -27,11 +27,21 @@ impl Matrix {
     }
 
     pub fn init_with(mut self, val: f64) -> Self {
+        assert!(
+            self.mem.len() == 0,
+            "init_with can only be called on a newly constructed Matrix."
+        );
         for _ in 0..self.rows * self.cols {
             self.mem.push(val);
         }
 
         return self;
+    }
+
+    pub fn fill_with(&mut self, val: f64) {
+        for i in 0..self.rows * self.cols {
+            self.mem[i] = val;
+        }
     }
 
     pub fn init_rand(mut self) -> Self {
@@ -165,7 +175,7 @@ impl fmt::Display for Matrix {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Vector {
     pub mem: Vec<f64>,
     pub rows: usize,
@@ -198,6 +208,10 @@ impl Vector {
     }
 
     pub fn init_with(mut self, val: f64) -> Self {
+        assert!(
+            self.mem.len() == 0,
+            "init_with can only be called on a newly constructed Matrix."
+        );
         for _ in 0..self.rows {
             self.mem.push(val);
         }
@@ -288,7 +302,7 @@ impl Vector {
         }
     }
 
-    pub fn calc_length(&self) -> f64 {
+    pub fn calc_magnitude(&self) -> f64 {
         let mut res: f64 = 0.0;
         for i in 0..self.rows {
             res += self.mem[i] * self.mem[i];

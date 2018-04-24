@@ -74,7 +74,6 @@ const N_L1: usize = 16;
 const N_L2: usize = 16;
 const N_OUTPUTS: usize = 10;
 
-const BATCH_SIZE: usize = 1000;
 const LOG_EVERY_N: usize = 10_000;
 const LEARNING_RATE: f64 = 0.1;
 const NUM_EPOCHS: usize = 1000;
@@ -101,6 +100,8 @@ fn main() {
     let mut random_number_generator = rand::thread_rng();
     let mut examples_processed = 0usize;
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
+    let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
+    let mut avg_error: f64 = 0.0;
     for current_epoch in 1..NUM_EPOCHS + 1 {
         // Randomize example order
         random_number_generator.shuffle(&mut training_data.example_indices.as_mut_slice());
@@ -109,12 +110,40 @@ fn main() {
         while current_examples_cursor < training_data.examples_count {
             let (input_data, label_data) = training_data.slices_for_cursor(current_examples_cursor);
             true_outputs.copy_from_slice(label_data);
-            nn.forward_propagation(input_data);
+            let outputs = nn.evaluate(input_data).clone();
             nn.backward_propagation(&true_outputs);
-            break;
-        }
 
-        break;
+            // Update accuracy metrics
+            true_outputs.sub(&outputs, &mut error);
+            avg_error += error.calc_magnitude();
+            let (max_i, max) = outputs.max_component();
+            let (tmax_i, tmax) = true_outputs.max_component();
+            if max_i == tmax_i {
+                hits += 1;
+            }
+
+            if (current_examples_cursor + 1) % network::BATCH_SIZE == 0 {
+                nn.apply_batch();
+            }
+
+            if examples_processed % LOG_EVERY_N == 0 {
+                println!(
+                    "error over last {}: {:8.4}",
+                    LOG_EVERY_N,
+                    avg_error / LOG_EVERY_N as f64
+                );
+                println!("hits {}%", (hits as f64) * 100.0 / (LOG_EVERY_N as f64));
+                avg_error = 0.0;
+                hits = 0;
+
+                if examples_processed % (LOG_EVERY_N * 10) == 0 {
+                    println!("True: {}, Outputs: {}", true_outputs, outputs);
+                }
+            }
+
+            examples_processed += 1;
+            current_examples_cursor += 1;
+        }
     }
 }
 
@@ -163,7 +192,7 @@ fn old_main() {
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut avg_error: f64 = 0.0;
 
-    let avg_by_batch = |x| x * LEARNING_RATE / BATCH_SIZE as f64;
+    let avg_by_batch = |x| x * LEARNING_RATE / network::BATCH_SIZE as f64;
     let set_0 = |_: f64| 0.0;
 
     let mut hits = 0usize;
@@ -203,7 +232,7 @@ fn old_main() {
 
             // Error
             true_outputs.sub(&outputs, &mut error);
-            avg_error += error.calc_length();
+            avg_error += error.calc_magnitude();
             let (max_i, max) = outputs.max_component();
             let (tmax_i, tmax) = true_outputs.max_component();
             if max_i == tmax_i {
@@ -254,7 +283,7 @@ fn old_main() {
                 }
             }
 
-            if (current_examples_cursor + 1) % BATCH_SIZE == 0 {
+            if (current_examples_cursor + 1) % network::BATCH_SIZE == 0 {
                 // Weights adjustment
                 // Output
                 output_bias += avg_by_batch(output_bias_batch_pd);
