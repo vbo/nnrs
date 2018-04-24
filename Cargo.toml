@@ -6,3 +6,6 @@ authors = ["Vadim Borodin <borodin.vadim@gmail.com>"]
 [dependencies]
 rand = "0.4.2"
 byteorder = "1.2.2"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"

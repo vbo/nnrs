@@ -1,19 +1,25 @@
+use serde_json;
 use math::Matrix;
 use math::Vector;
 use std::fmt;
 use std::mem;
 use std::collections::HashSet;
+use std::error::Error;
+use std::io::prelude::*;
+use std::fs::File;
+use std::path::Path;
 
 const LEARNING_RATE: f64 = 0.1;
 pub const BATCH_SIZE: usize = 1000;
 
+#[derive(Serialize, Deserialize)]
 pub struct Network {
     layers: Vec<Layer>,
     input_layer: LayerID,
     output_layer: LayerID,
 }
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LayerID(usize);
 impl fmt::Display for LayerID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -21,6 +27,7 @@ impl fmt::Display for LayerID {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 enum LayerKind {
     Input,
     Output,
@@ -301,8 +308,19 @@ impl Network {
             }
         }
     }
+
+    pub fn write_to_file(&self, output_path: &str) {
+        let mut file = File::create(&output_path).unwrap();
+        serde_json::to_writer(file, &self).unwrap();
+    }
+
+    pub fn load_from_file(path: &str) -> Self {
+        let mut file = File::open(path).unwrap();
+        serde_json::from_reader(&file).unwrap()
+    }
 }
 
+#[derive(Serialize, Deserialize)]
 struct Layer {
     kind: LayerKind,
     dependencies: Vec<LayerDependency>,
@@ -327,6 +345,7 @@ impl Layer {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct LayerDependency {
     id: LayerID,
     weights: Matrix,

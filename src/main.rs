@@ -1,4 +1,8 @@
 extern crate rand;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 use std::fmt;
 
@@ -74,7 +78,11 @@ const N_L1: usize = 16;
 const N_L2: usize = 16;
 const N_OUTPUTS: usize = 10;
 
+// TODO: parse command line arguments
 const LOG_EVERY_N: usize = 10_000;
+const TEST_EVERY_N: usize = 50_000;
+const WRITE_EVERY_N: usize = 50_000;
+const MODEL_OUTPUT_PATH: &str = "model.json";
 const LEARNING_RATE: f64 = 0.1;
 const NUM_EPOCHS: usize = 1000;
 
@@ -95,6 +103,10 @@ fn main() {
     let mut training_data = mnist_data::load_mnist_training();
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
+
+    let mut testing_data = mnist_data::load_mnist_testing();
+    assert!(testing_data.input_size == N_INPUTS, "Wrong inputs!");
+    assert!(testing_data.label_size == N_OUTPUTS, "Wrong outputs!");
 
     let mut hits = 0usize;
     let mut random_number_generator = rand::thread_rng();
@@ -141,9 +153,65 @@ fn main() {
                 }
             }
 
+            if examples_processed % TEST_EVERY_N == 0 {
+                println!(
+                    "Trained over {}k examples. Evaluation results: {}",
+                    examples_processed / 1000,
+                    evaluate(&mut nn, &testing_data)
+                );
+            }
+
+            if examples_processed % WRITE_EVERY_N == 0 {
+                nn.write_to_file(&MODEL_OUTPUT_PATH);
+            }
+
             examples_processed += 1;
             current_examples_cursor += 1;
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct EvaluationResult {
+    hits_ratio: f64,
+    avg_error: f64,
+}
+
+impl fmt::Display for EvaluationResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[hits: {:.2}%, avg_error: {:.4}]",
+            self.hits_ratio * 100.0,
+            self.avg_error
+        )
+    }
+}
+
+fn evaluate(predictor: &mut Network, test_dataset: &Dataset) -> EvaluationResult {
+    let mut hits = 0usize;
+    let mut avg_error = 0.0f64;
+    let mut current_examples_cursor = 0usize;
+    let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
+    let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
+    while current_examples_cursor < test_dataset.examples_count {
+        let (input_data, label_data) = test_dataset.slices_for_cursor(current_examples_cursor);
+        true_outputs.copy_from_slice(label_data);
+        let outputs = predictor.predict(input_data).clone();
+        true_outputs.sub(&outputs, &mut error);
+        avg_error += error.calc_magnitude();
+        let (max_i, max) = outputs.max_component();
+        let (tmax_i, tmax) = true_outputs.max_component();
+        if max_i == tmax_i {
+            hits += 1;
+        }
+
+        current_examples_cursor += 1;
+    }
+
+    EvaluationResult {
+        hits_ratio: hits as f64 / test_dataset.examples_count as f64,
+        avg_error: avg_error / test_dataset.examples_count as f64,
     }
 }
 

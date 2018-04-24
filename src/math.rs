@@ -1,10 +1,9 @@
-extern crate rand;
-
+use rand;
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Matrix {
     pub mem: Vec<f64>,
     pub cols: usize,
@@ -175,7 +174,7 @@ impl fmt::Display for Matrix {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vector {
     pub mem: Vec<f64>,
     pub rows: usize,
