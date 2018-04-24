@@ -5,6 +5,7 @@ extern crate serde_derive;
 extern crate serde_json;
 
 use std::fmt;
+use std::time;
 
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
@@ -79,26 +80,38 @@ const N_L2: usize = 16;
 const N_OUTPUTS: usize = 10;
 
 // TODO: parse command line arguments
+const LOAD_FROM_FILE: bool = false;
 const LOG_EVERY_N: usize = 10_000;
 const TEST_EVERY_N: usize = 50_000;
 const WRITE_EVERY_N: usize = 50_000;
 const MODEL_OUTPUT_PATH: &str = "model.json";
 const LEARNING_RATE: f64 = 0.1;
 const NUM_EPOCHS: usize = 1000;
+const NANOS_IN_SECOND: u64 = 1_000_000_000;
 
 fn sigmoid(x: f64) -> f64 {
     1.0 / ((-x).exp() + 1.0)
 }
 
+fn duration_as_total_secs(duration: &time::Duration) -> f64 {
+    duration.as_secs() as f64 + (duration.subsec_nanos() as f64 / NANOS_IN_SECOND as f64)
+}
+
 fn main() {
-    let mut nn = Network::new(N_INPUTS, N_OUTPUTS);
-    let inputs_id = nn.input_layer();
-    let l1_id = nn.add_hidden_layer(N_L1);
-    let l2_id = nn.add_hidden_layer(N_L2);
-    let outputs_id = nn.output_layer();
-    nn.add_layer_dependency(outputs_id, l2_id);
-    nn.add_layer_dependency(l2_id, l1_id);
-    nn.add_layer_dependency(l1_id, inputs_id);
+    let mut nn;
+    if (LOAD_FROM_FILE) {
+        nn = Network::load_from_file(MODEL_OUTPUT_PATH);
+    } else {
+        nn = Network::new(N_INPUTS, N_OUTPUTS);
+
+        let inputs_id = nn.input_layer();
+        let l1_id = nn.add_hidden_layer(N_L1);
+        let l2_id = nn.add_hidden_layer(N_L2);
+        let outputs_id = nn.output_layer();
+        nn.add_layer_dependency(outputs_id, l2_id);
+        nn.add_layer_dependency(l2_id, l1_id);
+        nn.add_layer_dependency(l1_id, inputs_id);
+    }
 
     let mut training_data = mnist_data::load_mnist_training();
     assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
@@ -113,7 +126,9 @@ fn main() {
     let mut examples_processed = 0usize;
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
-    let mut avg_error: f64 = 0.0;
+    let mut total_error: f64 = 0.0;
+    let mut total_elapsed_secs: f64 = 0.0;
+    let mut overall_stopwatch = time::Instant::now();
     for current_epoch in 1..NUM_EPOCHS + 1 {
         // Randomize example order
         random_number_generator.shuffle(&mut training_data.example_indices.as_mut_slice());
@@ -122,12 +137,15 @@ fn main() {
         while current_examples_cursor < training_data.examples_count {
             let (input_data, label_data) = training_data.slices_for_cursor(current_examples_cursor);
             true_outputs.copy_from_slice(label_data);
+
+            let mut stopwatch = time::Instant::now();
             let outputs = nn.predict(input_data).clone();
             nn.backward_propagation(&true_outputs);
+            total_elapsed_secs += duration_as_total_secs(&stopwatch.elapsed());
 
             // Update accuracy metrics
             true_outputs.sub(&outputs, &mut error);
-            avg_error += error.calc_magnitude();
+            total_error += error.calc_magnitude();
             let (max_i, max) = outputs.max_component();
             let (tmax_i, tmax) = true_outputs.max_component();
             if max_i == tmax_i {
@@ -138,15 +156,26 @@ fn main() {
                 nn.apply_batch();
             }
 
-            if examples_processed % LOG_EVERY_N == 0 {
+            if (examples_processed + 1) % LOG_EVERY_N == 0 {
                 println!(
                     "error over last {}: {:8.4}",
                     LOG_EVERY_N,
-                    avg_error / LOG_EVERY_N as f64
+                    total_error / LOG_EVERY_N as f64
                 );
                 println!("hits {}%", (hits as f64) * 100.0 / (LOG_EVERY_N as f64));
-                avg_error = 0.0;
+                println!(
+                    "time/example: {:.4}ms",
+                    1000.0 * total_elapsed_secs / LOG_EVERY_N as f64
+                );
+                println!(
+                    "total time per {}k: {:.4}s",
+                    LOG_EVERY_N / 1000,
+                    duration_as_total_secs(&overall_stopwatch.elapsed())
+                );
+                total_error = 0.0;
                 hits = 0;
+                total_elapsed_secs = 0.0;
+                overall_stopwatch = time::Instant::now();
 
                 if examples_processed % (LOG_EVERY_N * 10) == 0 {
                     println!("True: {}, Outputs: {}", true_outputs, outputs);
@@ -190,7 +219,7 @@ impl fmt::Display for EvaluationResult {
 
 fn evaluate(predictor: &mut Network, test_dataset: &Dataset) -> EvaluationResult {
     let mut hits = 0usize;
-    let mut avg_error = 0.0f64;
+    let mut total_error = 0.0f64;
     let mut current_examples_cursor = 0usize;
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
@@ -199,7 +228,7 @@ fn evaluate(predictor: &mut Network, test_dataset: &Dataset) -> EvaluationResult
         true_outputs.copy_from_slice(label_data);
         let outputs = predictor.predict(input_data).clone();
         true_outputs.sub(&outputs, &mut error);
-        avg_error += error.calc_magnitude();
+        total_error += error.calc_magnitude();
         let (max_i, max) = outputs.max_component();
         let (tmax_i, tmax) = true_outputs.max_component();
         if max_i == tmax_i {
@@ -211,7 +240,7 @@ fn evaluate(predictor: &mut Network, test_dataset: &Dataset) -> EvaluationResult
 
     EvaluationResult {
         hits_ratio: hits as f64 / test_dataset.examples_count as f64,
-        avg_error: avg_error / test_dataset.examples_count as f64,
+        avg_error: total_error / test_dataset.examples_count as f64,
     }
 }
 

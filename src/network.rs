@@ -107,8 +107,8 @@ impl Network {
     }
 
     fn calc_layers_order(&self) -> Vec<LayerID> {
-        let mut scheduled_currently = HashSet::new();
-        let mut layers_order = Vec::new();
+        let mut scheduled_currently = HashSet::with_capacity(self.layers.len());
+        let mut layers_order = Vec::with_capacity(self.layers.len());
         let output_layer = self.output_layer();
         self.calc_layers_order_internal(&mut scheduled_currently, &mut layers_order, output_layer);
 
