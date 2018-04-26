@@ -1,5 +1,4 @@
 use rand;
-use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use std::fmt;
 

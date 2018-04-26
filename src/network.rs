@@ -1,13 +1,10 @@
-use serde_json;
-use math::Matrix;
-use math::Vector;
 use std::fmt;
 use std::mem;
 use std::collections::HashSet;
-use std::error::Error;
-use std::io::prelude::*;
 use std::fs::File;
-use std::path::Path;
+use serde_json;
+use math::Matrix;
+use math::Vector;
 
 const LEARNING_RATE: f64 = 0.1;
 pub const BATCH_SIZE: usize = 1000;
@@ -146,7 +143,7 @@ impl Network {
 
         {
             let input_id = self.input_layer();
-            let mut input_layer = self.get_layer_mut(input_id);
+            let input_layer = self.get_layer_mut(input_id);
             assert!(
                 input_data.len() == input_layer.activations.rows,
                 "Invalid input dimensions."
@@ -177,7 +174,7 @@ impl Network {
         // Compute output error.
         let output_layer_id = self.output_layer();
         {
-            let mut output_layer = self.get_layer_mut(output_layer_id);
+            let output_layer = self.get_layer_mut(output_layer_id);
             assert!(
                 true_outputs.rows == output_layer.activations.rows,
                 "Labels size mismatch with output layer: {} != {}",
@@ -310,12 +307,12 @@ impl Network {
     }
 
     pub fn write_to_file(&self, output_path: &str) {
-        let mut file = File::create(&output_path).unwrap();
+        let file = File::create(&output_path).unwrap();
         serde_json::to_writer(file, &self).unwrap();
     }
 
     pub fn load_from_file(path: &str) -> Self {
-        let mut file = File::open(path).unwrap();
+        let file = File::open(path).unwrap();
         serde_json::from_reader(&file).unwrap()
     }
 }
