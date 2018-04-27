@@ -1,0 +1,49 @@
+Step 1: Initialize Neural Network with random values
+Step 2: While playing the game execute the following loop
+Step 2.a: Generate random number between 0 and 1
+
+If number is larger than the threshold e select random action, otherwise select action with the highest possible reward by on running the neural network with the current state and each possible action
+
+Step 2.b: Take action from step 2.a
+Step 2.c: Observe reward r after taking action
+Step 2.d: Train the Neural Network using the reward r using the formula
+
+Training data:
+Session = sequence of {State, Action} -> R
+
+Example session.txt, 7 steps until game_over:
+{s, Up, 0.2} -> 0
+{s, Up, 0.2} -> 0
+{s, Up, 0.2} -> 1
+{s, Up, 0.2} -> 1
+{s, Up, 0.2} -> 1
+{s, Up, 0.2} -> 2
+{s, Up, 0.2} -> 2
+{s, Up, 0.8} -> 2 - game_over_cost = 0
+
+Processed (diff etc):
+{s, Up, 0.2} -> 0 ::> ...
+{s, Up, 0.2} -> 0
+{s, Up, 0.2} -> 1
+{s, Up, 0.2} -> 0
+{s, Up, 0.2} -> 0 ::> 0 + 0.2*(1 + 0.2*(-1.5)*0.99)
+{s, Up, 0.2} -> 1 ::> 1 + 0.2*(-1.5)*0.99
+{s, Up, 0.2} -> 0 ::> acc_true_gain + future_pred_gain*future_acc_true_gain*forget_rate = 0 + 0.8*(-2)*0.99 = -1.5
+{s, Up, 0.8} -> 0 ::> game_over_cost = -2
+
+
+Training algorithm:
+ - for each step do forward propagation getting pred_output
+ - use true_output from processed session as true_output
+ - apply backward propagation
+
+Network:
+input: map, vector of pressed buttons, score?
+output: predicted gain
+
+
+Game session (rev 1):
+1. Play game randomly from start to game over.
+2. Note initial state, action and accumulated reward for each step.
+
+

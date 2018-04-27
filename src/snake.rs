@@ -1,6 +1,12 @@
 use std::io::prelude::*;
 use std::io::stdout;
+use std::thread;
+use rand;
+use rand::Rng;
+use rand::distributions::{IndependentSample, Range};
 use math::Vector;
+
+const SLEEP_INTERVAL_MS: u32 = 200;
 
 pub struct GameState {
     map: SnakeMap,
@@ -12,7 +18,7 @@ struct StepResult {
     game_over: bool,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Rand)]
 pub enum SnakeInput {
     Up,
     Down,
@@ -74,6 +80,15 @@ impl SnakeMap {
         assert!(self.body.len() > 0);
         self.body[self.body.len() - 1]
     }
+
+    fn get_new_pos(&self, pos: (usize, usize), input: SnakeInput) -> (usize, usize) {
+        match input {
+            SnakeInput::Up => (pos.0, (pos.1 + self.height - 1) % self.height),
+            SnakeInput::Down => (pos.0, (pos.1 + 1) % self.height),
+            SnakeInput::Right => ((pos.0 + 1) % self.width, pos.1),
+            SnakeInput::Left => ((pos.0 + self.width - 1) % self.width, pos.1),
+        }
+    }
 }
 
 pub fn draw_ascii<T: Write>(writer: &mut T, map: &SnakeMap) {
@@ -91,32 +106,23 @@ pub fn output_char<T: Write>(writer: &mut T, tile: SnakeTile) {
         SnakeTile::Empty => ".",
         SnakeTile::Body => "#",
         SnakeTile::Fruit => "",
-        SnakeTile::Head => "@"
+        SnakeTile::Head => "@",
     };
 
     writer.write(character.as_bytes());
 }
 
-fn get_new_pos(pos: (usize, usize), input: SnakeInput) -> (usize, usize) {
-    match input {
-        SnakeInput::Up => (pos.0, pos.1 - 1),
-        SnakeInput::Down => (pos.0, pos.1 + 1),
-        SnakeInput::Right => (pos.0 + 1, pos.1),
-        SnakeInput::Left => (pos.0 - 1, pos.1),
-    }
-}
-
 fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
     // TODO: consider edge cases
     let old_pos = state.map.get_head_pos();
-    let new_pos = get_new_pos(old_pos, input);
+    let new_pos = state.map.get_new_pos(old_pos, input);
     let tail_pos = state.map.body[0];
 
     let next_tile = state.map.get_tile_at(new_pos.0, new_pos.1);
     match next_tile {
         SnakeTile::Head => {
             panic!("There can only be one head");
-        },
+        }
         SnakeTile::Empty => {
             // add new head to body, remove tail
             state.map.body.push(new_pos);
@@ -126,25 +132,38 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
             state.map.set_tile_at(tail_pos, SnakeTile::Empty);
             StepResult {
                 state: state,
-                game_over: false
+                game_over: false,
             }
-        },
-        SnakeTile::Body => {
-            StepResult {
-                state: state,
-                game_over: true
-            }
+        }
+        SnakeTile::Body => StepResult {
+            state: state,
+            game_over: true,
         },
         SnakeTile::Fruit => {
             // add new head to body
             state.map.body.push(new_pos);
             state.map.set_tile_at(new_pos, SnakeTile::Head);
             state.map.set_tile_at(old_pos, SnakeTile::Body);
+
+            let mut iters = 0;
+            while iters < 100 {
+                let mut rng = rand::thread_rng();
+                let pos_x = Range::new(0, state.map.width).ind_sample(&mut rng);
+                let pos_y = Range::new(0, state.map.height).ind_sample(&mut rng);
+                if let SnakeTile::Empty = state.map.get_tile_at(pos_x, pos_y) {
+                    state.map.set_tile_at((pos_x, pos_y), SnakeTile::Fruit);
+                    break;
+                }
+
+                iters += 1;
+            }
+            assert!(iters < 100);
+
             StepResult {
                 state: state,
-                game_over: false
+                game_over: false,
             }
-        },
+        }
     }
 }
 
@@ -155,18 +174,25 @@ pub fn main_snake() {
         score: 0.0,
     };
 
+    let mut rng = rand::thread_rng();
+    let mut done = false;
+
+    print!("\x1B[2J");
     draw_ascii(&mut stdout(), &state.map);
-    println!("\n");
-    let StepResult{state: state, game_over: game_over} = snake_step(state, SnakeInput::Up);
-    draw_ascii(&mut stdout(), &state.map);
-    println!("\n");
-    let StepResult{state: state, game_over: game_over} = snake_step(state, SnakeInput::Up);
-    draw_ascii(&mut stdout(), &state.map);
-    println!("\n");
-    let StepResult{state: state, game_over: game_over} = snake_step(state, SnakeInput::Up);
-    draw_ascii(&mut stdout(), &state.map);
-    println!("\n");
-    let StepResult{state: state, game_over: game_over} = snake_step(state, SnakeInput::Right);
-    draw_ascii(&mut stdout(), &state.map);
-    println!("\n");
+    thread::sleep_ms(SLEEP_INTERVAL_MS);
+
+    while !done {
+        let input: SnakeInput = rng.gen();
+        print!("\x1B[2J");
+        print!("\x1B[1;1H");
+        println!("{:?}", input);
+        let StepResult {
+            state: new_state,
+            game_over: game_over,
+        } = snake_step(state, input);
+        done = game_over;
+        state = new_state;
+        draw_ascii(&mut stdout(), &state.map);
+        thread::sleep_ms(SLEEP_INTERVAL_MS);
+    }
 }
