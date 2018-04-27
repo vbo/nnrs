@@ -103,7 +103,7 @@ fn duration_as_total_secs(duration: &time::Duration) -> f64 {
 }
 
 fn main() {
-    snake::main_snake();
+    snake::main_snake_random_nn();
 }
 
 fn main_mnist() {

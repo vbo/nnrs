@@ -5,6 +5,7 @@ use rand;
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use math::Vector;
+use network;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 
@@ -26,6 +27,9 @@ pub enum SnakeInput {
     Right,
 }
 
+// TODO(vbo): create macros to get number of values in enum
+const SNAKE_INPUT_SIZE: usize = 4;
+
 #[derive(Copy, Clone)]
 pub enum SnakeTile {
     Empty,
@@ -33,6 +37,8 @@ pub enum SnakeTile {
     Body,
     Head,
 }
+
+const SNAKE_TILE_SIZE: usize = 4;
 
 pub trait TileMap<T> {
     fn get_tile_at(&self, x: usize, y: usize) -> T;
@@ -167,7 +173,7 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
     }
 }
 
-pub fn main_snake() {
+pub fn main_snake_random() {
     let head_pos = (4, 4);
     let mut state = GameState {
         map: SnakeMap::example((10, 10), head_pos),
@@ -186,6 +192,122 @@ pub fn main_snake() {
         print!("\x1B[2J");
         print!("\x1B[1;1H");
         println!("{:?}", input);
+        let StepResult {
+            state: new_state,
+            game_over: game_over,
+        } = snake_step(state, input);
+        done = game_over;
+        state = new_state;
+        draw_ascii(&mut stdout(), &state.map);
+        thread::sleep_ms(SLEEP_INTERVAL_MS);
+    }
+}
+
+const MAP_WIDTH: usize = 8;
+const MAP_HEIGHT: usize = 8;
+const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
+const RANDOM_MOVE_PROBABILITY: f64 = 0.4;
+
+fn convert_state_to_network_inputs(state: &GameState) -> Vec<f64> {
+    assert!(state.map.width == MAP_WIDTH);
+    assert!(state.map.height == MAP_HEIGHT);
+    let mut inputs = vec![0.0; N_INPUTS];
+
+    for (i, tile) in state.map.tiles.iter().enumerate() {
+        let offset = *tile as usize;
+        // [b11, f11, ..,
+        //  b12, f12, ..,
+        //  bN1, fN1, ..,
+        //  bNM, fNM, ..,
+        //  i1, i2, .., iK]
+        inputs[SNAKE_TILE_SIZE * i + offset] = 1.0;
+    }
+
+    return inputs;
+}
+
+fn set_snake_input_in_network_inputs(nn_input: &mut [f64], input: SnakeInput) {
+    let offset = input as usize;
+    nn_input[nn_input.len() - 1 - offset] = 1.0;
+}
+
+fn get_next_input_with_gain<R: rand::Rng>(
+    nn: &mut network::Network,
+    state: &GameState,
+    random_move_prob: f64,
+    rng: &mut R,
+) -> (SnakeInput, f64) {
+    use self::SnakeInput::*;
+    let mut inputs = convert_state_to_network_inputs(state);
+    let possible_snake_inputs = [Up, Down, Left, Right];
+    let mut snake_inputs_gains = vec![0.0; possible_snake_inputs.len()];
+    for (i, snake_input) in possible_snake_inputs.iter().enumerate() {
+        set_snake_input_in_network_inputs(&mut inputs, *snake_input);
+        let outputs = nn.predict(inputs.as_slice());
+        assert!(outputs.rows == 1);
+        snake_inputs_gains[i] = outputs.mem[0];
+    }
+
+    if (rng.gen_range(0.0, 1.0) <= random_move_prob) {
+        let i = rng.gen_range(0, SNAKE_INPUT_SIZE);
+        return (possible_snake_inputs[i], snake_inputs_gains[i]);
+    } else {
+        let (i, max_gain) = get_max_with_pos(snake_inputs_gains.as_slice());
+        return (possible_snake_inputs[i], max_gain);
+    }
+}
+
+fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
+    assert!(xs.len() > 0);
+    let mut max = xs[0];
+    let mut max_i = 0;
+
+    for i in 1..xs.len() {
+        let val = xs[i];
+        if val > max {
+            max = val;
+            max_i = i;
+        }
+    }
+
+    return (max_i, max);
+}
+
+pub fn main_snake_random_nn() {
+    let mut nn;
+    {
+        const N_OUTPUTS: usize = 1;
+        const N_L1: usize = 16;
+        const N_L2: usize = 16;
+        nn = network::Network::new(N_INPUTS, N_OUTPUTS);
+
+        let inputs_id = nn.input_layer();
+        let l1_id = nn.add_hidden_layer(N_L1);
+        let l2_id = nn.add_hidden_layer(N_L2);
+        let outputs_id = nn.output_layer();
+        nn.add_layer_dependency(outputs_id, l2_id);
+        nn.add_layer_dependency(l2_id, l1_id);
+        nn.add_layer_dependency(l1_id, inputs_id);
+    }
+
+    let head_pos = (4, 4);
+    let mut state = GameState {
+        map: SnakeMap::example((MAP_WIDTH, MAP_HEIGHT), head_pos),
+        score: 0.0,
+    };
+
+    let mut done = false;
+    let mut rng = rand::thread_rng();
+
+    print!("\x1B[2J");
+    draw_ascii(&mut stdout(), &state.map);
+    thread::sleep_ms(SLEEP_INTERVAL_MS);
+
+    while !done {
+        let (input, gain) = get_next_input_with_gain(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
+        print!("\x1B[2J");
+        print!("\x1B[1;1H");
+        println!("{:?} ({})", input, gain);
         let StepResult {
             state: new_state,
             game_over: game_over,
