@@ -85,12 +85,12 @@ const N_L2: usize = 16;
 const N_OUTPUTS: usize = 10;
 
 // TODO: parse command line arguments
-const LOAD_FROM_FILE: bool = false;
-const LOG_EVERY_N: usize = 10_000;
+pub const LOAD_FROM_FILE: bool = false;
+pub const LOG_EVERY_N: usize = 1_000;
+pub const WRITE_EVERY_N: usize = 50_000;
+pub const MODEL_OUTPUT_PATH: &str = "model.json";
+
 const TEST_EVERY_N: usize = 50_000;
-const WRITE_EVERY_N: usize = 50_000;
-const MODEL_OUTPUT_PATH: &str = "model.json";
-const LEARNING_RATE: f64 = 0.1;
 const NUM_EPOCHS: usize = 1000;
 const NANOS_IN_SECOND: u64 = 1_000_000_000;
 
@@ -103,7 +103,7 @@ fn duration_as_total_secs(duration: &time::Duration) -> f64 {
 }
 
 fn main() {
-    snake::main_snake_random_nn();
+    snake::main_snake_random_nn(LOAD_FROM_FILE, MODEL_OUTPUT_PATH, LOG_EVERY_N, WRITE_EVERY_N);
 }
 
 fn main_mnist() {

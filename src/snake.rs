@@ -9,9 +9,16 @@ use network;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 
+#[derive(Clone, Debug)]
 pub struct GameState {
     map: SnakeMap,
     score: f64,
+}
+
+#[derive(Debug)]
+struct SessionStep {
+    state: GameState,
+    action: SnakeInput,
 }
 
 struct StepResult {
@@ -30,7 +37,7 @@ pub enum SnakeInput {
 // TODO(vbo): create macros to get number of values in enum
 const SNAKE_INPUT_SIZE: usize = 4;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum SnakeTile {
     Empty,
     Fruit,
@@ -45,6 +52,7 @@ pub trait TileMap<T> {
     fn set_tile_at(&mut self, xy: (usize, usize), tile: T);
 }
 
+#[derive(Clone, Debug)]
 pub struct SnakeMap {
     height: usize,
     width: usize,
@@ -74,8 +82,8 @@ impl SnakeMap {
 
     pub fn example(dims: (usize, usize), head_pos: (usize, usize)) -> Self {
         let (width, height) = dims;
-        assert!(width >= 8);
-        assert!(height >= 8);
+        assert!(width >= 5);
+        assert!(height >= 5);
         let mut map = SnakeMap::new(width, height, head_pos);
         map.set_tile_at(head_pos, SnakeTile::Head);
         map.set_tile_at((4, 2), SnakeTile::Fruit);
@@ -146,6 +154,7 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
             game_over: true,
         },
         SnakeTile::Fruit => {
+            state.score += 1.0;
             // add new head to body
             state.map.body.push(new_pos);
             state.map.set_tile_at(new_pos, SnakeTile::Head);
@@ -203,8 +212,8 @@ pub fn main_snake_random() {
     }
 }
 
-const MAP_WIDTH: usize = 8;
-const MAP_HEIGHT: usize = 8;
+const MAP_WIDTH: usize = 6;
+const MAP_HEIGHT: usize = 6;
 const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
 const RANDOM_MOVE_PROBABILITY: f64 = 0.4;
 
@@ -257,6 +266,21 @@ fn get_next_input_with_gain<R: rand::Rng>(
     }
 }
 
+fn teach_nn(nn: &mut network::Network,
+            state: &GameState,
+            snake_input: SnakeInput,
+            true_output: f64) {
+    let mut inputs = convert_state_to_network_inputs(state);
+    set_snake_input_in_network_inputs(&mut inputs, snake_input);
+    {
+        let out = nn.predict(inputs.as_slice());
+        assert!(out.rows == 1);
+    }
+    let mut true_output_vec = Vector::new(1).init_with(0.0);
+    true_output_vec.mem[0] = true_output;
+    nn.backward_propagation(&true_output_vec);
+}
+
 fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
     assert!(xs.len() > 0);
     let mut max = xs[0];
@@ -273,48 +297,89 @@ fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
     return (max_i, max);
 }
 
-pub fn main_snake_random_nn() {
+pub fn main_snake_random_nn(load_from_file: bool,
+                            model_path: &str,
+                            log_every_n: usize,
+                            write_every_n: usize) {
     let mut nn;
-    {
+    if load_from_file {
+        nn = network::Network::load_from_file(model_path);
+    } else {
         const N_OUTPUTS: usize = 1;
-        const N_L1: usize = 16;
-        const N_L2: usize = 16;
-        nn = network::Network::new(N_INPUTS, N_OUTPUTS);
+        nn = network::Network::new(N_INPUTS, 1);
 
         let inputs_id = nn.input_layer();
-        let l1_id = nn.add_hidden_layer(N_L1);
-        let l2_id = nn.add_hidden_layer(N_L2);
+        let l1_id = nn.add_hidden_layer(16);
+        let l2_id = nn.add_hidden_layer(16);
+        let l3_id = nn.add_hidden_layer(6);
+        let l4_id = nn.add_hidden_layer(4);
         let outputs_id = nn.output_layer();
-        nn.add_layer_dependency(outputs_id, l2_id);
+        nn.add_layer_dependency(outputs_id, l4_id);
+        nn.add_layer_dependency(l4_id, l3_id);
+        nn.add_layer_dependency(l3_id, l2_id);
         nn.add_layer_dependency(l2_id, l1_id);
+        nn.add_layer_dependency(l2_id, inputs_id);
         nn.add_layer_dependency(l1_id, inputs_id);
     }
+    let mut examples_processed = 0;
+    let mut sessions_processed = 0;
+	let mut avg_score: f64 = 0.0;
+    while true {
+        let head_pos = (4, 4);
+        let mut state = GameState {
+            map: SnakeMap::example((MAP_WIDTH, MAP_HEIGHT), head_pos),
+            score: 0.0,
+        };
 
-    let head_pos = (4, 4);
-    let mut state = GameState {
-        map: SnakeMap::example((MAP_WIDTH, MAP_HEIGHT), head_pos),
-        score: 0.0,
-    };
+        let mut done = false;
+        let mut rng = rand::thread_rng();
 
-    let mut done = false;
-    let mut rng = rand::thread_rng();
+        // print!("\x1B[2J");
+        // draw_ascii(&mut stdout(), &state.map);
+        // thread::sleep_ms(SLEEP_INTERVAL_MS);
 
-    print!("\x1B[2J");
-    draw_ascii(&mut stdout(), &state.map);
-    thread::sleep_ms(SLEEP_INTERVAL_MS);
-
-    while !done {
-        let (input, gain) = get_next_input_with_gain(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
-        print!("\x1B[2J");
-        print!("\x1B[1;1H");
-        println!("{:?} ({})", input, gain);
-        let StepResult {
-            state: new_state,
-            game_over: game_over,
-        } = snake_step(state, input);
-        done = game_over;
-        state = new_state;
-        draw_ascii(&mut stdout(), &state.map);
-        thread::sleep_ms(SLEEP_INTERVAL_MS);
+        let mut old_state = state.clone();
+		let mut old_input = SnakeInput::Down;
+        let mut session: Vec<SessionStep> = Vec::new();
+        while !done {
+            let (input, gain) = get_next_input_with_gain(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
+            old_state = state.clone();
+            session.push(SessionStep {
+                state: old_state,
+                action: input,
+            });
+            // print!("\x1B[2J");
+            // print!("\x1B[1;1H");
+            // println!("{:?} ({})", input, gain);
+            let StepResult {
+                state: new_state,
+                game_over: game_over,
+            } = snake_step(state, input);
+            state = new_state;
+			done = game_over;
+			// draw_ascii(&mut stdout(), &state.map);
+			// thread::sleep_ms(SLEEP_INTERVAL_MS);
+        }
+        session.reverse();
+		avg_score += session[0].state.score;
+		if sessions_processed % log_every_n == 0 {
+			println!("Avg score: {}, games played {}", avg_score / log_every_n as f64, sessions_processed);
+			avg_score = 0.0;
+		}
+        let mut future_score = -2.0;
+        for step in &mut session {
+            step.state.score += 0.8*future_score;
+            let delta_score = future_score - step.state.score;
+            future_score = step.state.score;
+            teach_nn(&mut nn, &step.state, step.action, delta_score);
+			examples_processed += 1;
+        }
+        if (examples_processed + 1) % network::BATCH_SIZE == 0 {
+            nn.apply_batch();
+        }
+        if sessions_processed % write_every_n == 0 {
+            nn.write_to_file(&model_path);
+        }
+		sessions_processed += 1;
     }
 }
