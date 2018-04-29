@@ -86,7 +86,7 @@ const N_OUTPUTS: usize = 10;
 
 // TODO: parse command line arguments
 pub const LOAD_FROM_FILE: bool = false;
-pub const LOG_EVERY_N: usize = 1_000;
+pub const LOG_EVERY_N: usize = 50_000;
 pub const WRITE_EVERY_N: usize = 50_000;
 pub const MODEL_OUTPUT_PATH: &str = "model.json";
 
@@ -103,7 +103,12 @@ fn duration_as_total_secs(duration: &time::Duration) -> f64 {
 }
 
 fn main() {
-    snake::main_snake_random_nn(LOAD_FROM_FILE, MODEL_OUTPUT_PATH, LOG_EVERY_N, WRITE_EVERY_N);
+    snake::main_snake_random_nn(
+        LOAD_FROM_FILE,
+        MODEL_OUTPUT_PATH,
+        LOG_EVERY_N,
+        WRITE_EVERY_N,
+    );
 }
 
 fn main_mnist() {

@@ -162,7 +162,7 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
             state.map.set_tile_at(old_pos, SnakeTile::Body);
 
             let mut iters = 0;
-			let mut game_over = false;
+            let mut game_over = false;
             while iters < 100 {
                 let mut rng = rand::thread_rng();
                 let pos_x = Range::new(0, state.map.width).ind_sample(&mut rng);
@@ -174,9 +174,9 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
 
                 iters += 1;
             }
-			if (iters == 100) {
-				game_over = true; //all map is most likely filled.
-			}
+            if (iters == 100) {
+                game_over = true; //all map is most likely filled.
+            }
             StepResult {
                 state: state,
                 game_over: game_over,
@@ -269,10 +269,12 @@ fn get_next_input_with_gain<R: rand::Rng>(
     }
 }
 
-fn teach_nn(nn: &mut network::Network,
-            state: &GameState,
-            snake_input: SnakeInput,
-            true_output: f64) {
+fn teach_nn(
+    nn: &mut network::Network,
+    state: &GameState,
+    snake_input: SnakeInput,
+    true_output: f64,
+) {
     let mut inputs = convert_state_to_network_inputs(state);
     set_snake_input_in_network_inputs(&mut inputs, snake_input);
     {
@@ -300,10 +302,12 @@ fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
     return (max_i, max);
 }
 
-pub fn main_snake_random_nn(load_from_file: bool,
-                            model_path: &str,
-                            log_every_n: usize,
-                            write_every_n: usize) {
+pub fn main_snake_random_nn(
+    load_from_file: bool,
+    model_path: &str,
+    log_every_n: usize,
+    write_every_n: usize,
+) {
     let mut nn;
     if load_from_file {
         nn = network::Network::load_from_file(model_path);
@@ -329,7 +333,7 @@ pub fn main_snake_random_nn(load_from_file: bool,
     }
     let mut examples_processed = 0;
     let mut sessions_processed = 0;
-	let mut avg_score: f64 = 0.0;
+    let mut avg_score: f64 = 0.0;
     loop {
         let head_pos = (0, 0);
         let mut state = GameState {
@@ -340,69 +344,74 @@ pub fn main_snake_random_nn(load_from_file: bool,
         let mut done = false;
         let mut rng = rand::thread_rng();
 
-		if DEMO_MODE {
-        	 print!("\x1B[2J");
-        	 draw_ascii(&mut stdout(), &state.map);
-        	 thread::sleep_ms(SLEEP_INTERVAL_MS);
-		}
+        if DEMO_MODE {
+            print!("\x1B[2J");
+            draw_ascii(&mut stdout(), &state.map);
+            thread::sleep_ms(SLEEP_INTERVAL_MS);
+        }
         let mut old_state = state.clone();
-		let mut old_input = SnakeInput::Down;
+        let mut old_input = SnakeInput::Down;
         let mut session: Vec<SessionStep> = Vec::new();
         while !done {
-            let (input, gain) = get_next_input_with_gain(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
+            let (input, gain) =
+                get_next_input_with_gain(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
             old_state = state.clone();
             session.push(SessionStep {
                 state: old_state,
                 action: input,
             });
-			if DEMO_MODE {
-				print!("\x1B[2J");
-				print!("\x1B[1;1H");
-				println!("{:?} ({})", input, gain);
-			}
+            if DEMO_MODE {
+                print!("\x1B[2J");
+                print!("\x1B[1;1H");
+                println!("{:?} ({})", input, gain);
+            }
             let StepResult {
                 state: new_state,
                 game_over: game_over,
             } = snake_step(state, input);
             state = new_state;
-			done = game_over;
-			if DEMO_MODE {
-				draw_ascii(&mut stdout(), &state.map);
-				thread::sleep_ms(SLEEP_INTERVAL_MS);
-			}
+            done = game_over;
+            if DEMO_MODE {
+                draw_ascii(&mut stdout(), &state.map);
+                thread::sleep_ms(SLEEP_INTERVAL_MS);
+            }
         }
         session.reverse();
-		avg_score += session[0].state.score;
-		if sessions_processed % log_every_n == 0 {
-			println!("Avg score: {}, games played {}", avg_score / log_every_n as f64, sessions_processed);
-			avg_score = 0.0;
-		}
+        avg_score += session[0].state.score;
+        if sessions_processed % log_every_n == 0 {
+            println!(
+                "Avg score: {}, games played {}",
+                avg_score / log_every_n as f64,
+                sessions_processed
+            );
+            avg_score = 0.0;
+        }
         let mut future_score = -2.0;
         for step in &mut session {
-			// If we chose not optimal strategy - this is wrong.
-			// We will punish previous choices for one wrong choice later on.
+            // If we chose not optimal strategy - this is wrong.
+            // We will punish previous choices for one wrong choice later on.
             // step.state.score += 0.8*future_score;
             let mut delta_score = future_score - step.state.score;
-			if delta_score > 1.0 {
-				delta_score = 1.0;
-			}
-			if delta_score < -1.0 {
-				delta_score = -1.0;
-			}
-			let tmp = delta_score;
+            if delta_score > 1.0 {
+                delta_score = 1.0;
+            }
+            if delta_score < -1.0 {
+                delta_score = -1.0;
+            }
+            let tmp = delta_score;
             future_score = step.state.score;
-			step.state.score = delta_score; // writing into step exclusively for print debug
+            step.state.score = delta_score; // writing into step exclusively for print debug
             teach_nn(&mut nn, &step.state, step.action, delta_score);
-			examples_processed += 1;
+            examples_processed += 1;
         }
-		// print!("{:?}", session);
-		// break;
+        // print!("{:?}", session);
+        // break;
         if (examples_processed + 1) % network::BATCH_SIZE == 0 {
             nn.apply_batch();
         }
         if sessions_processed % write_every_n == 0 {
             nn.write_to_file(&model_path);
         }
-		sessions_processed += 1;
+        sessions_processed += 1;
     }
 }
