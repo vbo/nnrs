@@ -343,17 +343,18 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool)
     println!("Avg score: {}, games played {}", avg_score / sessions_processed as f64, sessions_processed);
 }
 
-pub fn main_snake_teach_nn(load_from_file: bool,
-                           model_path: &str,
+pub fn main_snake_teach_nn(model_input_path: Option<&str>,
+                           model_output_path: Option<&str>,
                            log_every_n: usize,
-                           write_every_n: usize) {
+                           write_every_n: usize,
+                           demo_mode: bool) {
     let mut nn;
-    if load_from_file {
-        println!("Loading the network from file {}", model_path);
-        nn = network::Network::load_from_file(model_path);
+    if let Some(model_input_path) = model_input_path {
+        println!("Loading the network from file {}", model_input_path);
+        nn = network::Network::load_from_file(model_input_path);
     } else {
         println!("Creating new network");
-        let shape = [N_INPUTS, 1024, 512, 1];
+        let shape = [N_INPUTS, 18, 9, 1];
         nn = network::Network::new(shape[0], shape[shape.len() - 1]);
         let mut prev_layer = nn.input_layer();
         for i in 1..shape.len() - 1 {
@@ -367,7 +368,6 @@ pub fn main_snake_teach_nn(load_from_file: bool,
     let mut examples_processed = 0;
     let mut sessions_processed = 0;
 	let mut avg_score: f64 = 0.0;
-    const DEMO_MODE: bool = false;
     loop {
         let head_pos = (0, 0);
         let mut state = GameState {
@@ -395,7 +395,7 @@ pub fn main_snake_teach_nn(load_from_file: bool,
             } = snake_step(state, input);
             state = new_state;
 			done = game_over;
-			if DEMO_MODE {
+			if demo_mode {
 				draw_ascii(&mut stdout(), &state.map);
 				thread::sleep_ms(SLEEP_INTERVAL_MS);
 			}
@@ -428,8 +428,10 @@ pub fn main_snake_teach_nn(load_from_file: bool,
             }
         }
         if sessions_processed % write_every_n == 0 {
-            nn.write_to_file(&model_path);
-            println!("Model saved");
+            if let Some(model_output_path) = model_output_path {
+                nn.write_to_file(&model_output_path);
+                println!("Model saved");
+            }
         }
 		sessions_processed += 1;
     }

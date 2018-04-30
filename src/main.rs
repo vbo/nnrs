@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 extern crate rand;
 extern crate serde;
 
@@ -10,6 +12,9 @@ extern crate rand_derive;
 
 #[macro_use]
 extern crate clap;
+use clap::App;
+use clap::AppSettings;
+use clap::ArgMatches;
 
 mod snake;
 mod mnist;
@@ -17,52 +22,48 @@ mod network;
 mod mnist_data;
 mod math;
 
-// TODO: parse command line arguments
-pub const LOAD_FROM_FILE: bool = false;
-pub const LOG_EVERY_N: usize = 50_000;
-pub const WRITE_EVERY_N: usize = 50_000;
-pub const MODEL_OUTPUT_PATH: &str = "model.json";
-pub const SERVING_MODE: bool = false;
-pub const TEST_MODE: bool = false;
-
 fn main() {
-    let matches = clap_app!(myapp =>
-        (version: "0.1")
-        (about: "Homebrewed neural network experiments")
-        (@subcommand mnist_train =>
-            (about: "Train a model to recognize digits")
-            (version: "0.1")
-            (@arg model_input_path: -i --model_input +takes_value
-             "Path to read a model from.")
-            (@arg model_output_path: -o --model_output +takes_value
-             "Path to write a model to.")
-            (@arg write_every_n: --write_every +takes_value
-             "Will write a model every N iterations.")
-            (@arg log_every_n: --log_every +takes_value
-             "Logs some debug info every N iterations.")
-            (@arg test_every_n: --test_every +takes_value
-             "Evaluate model and print results every N iterations.")
-        )
-        (@subcommand snake_train =>
-            (about: "Train a model to play snake")
-            (version: "0.1")
-            (@arg model_input_path: -i --model_input +takes_value
-             "Path to read a model from.")
-            (@arg model_output_path: -o --model_output +takes_value
-             "Path to write a model to.")
-        )
-    );
-    if SERVING_MODE {
-        snake::main_snake_demo_nn(
-            MODEL_OUTPUT_PATH,
-            LOG_EVERY_N,
-            TEST_MODE);
-    } else {
-        snake::main_snake_teach_nn(
-            LOAD_FROM_FILE,
-            MODEL_OUTPUT_PATH,
-            LOG_EVERY_N,
-            WRITE_EVERY_N,
-        );
+    let yaml = load_yaml!("cli.yml");
+    let matches = App::from_yaml(yaml)
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .get_matches();
+
+    match matches.subcommand() {
+        ("mnist_train", Some(submatches)) => execute_mnist_train(&matches, submatches),
+        ("snake_train", Some(submatches)) => execute_snake_train(&matches, submatches),
+        ("snake_demo", Some(submatches)) => execute_snake_demo(&matches, submatches),
+        (command_name, Some(_)) => panic!("Command not implemented: {}.", command_name),
+        _ => panic!("No subcommand supplied - this should not happen."),
     }
+}
+
+fn get_int_arg<T: FromStr>(matches: &ArgMatches, argname: &str) -> Option<T> {
+    matches.value_of(argname).unwrap().parse::<T>().ok()
+}
+
+fn execute_mnist_train(matches: &ArgMatches, submatches: &ArgMatches) {}
+
+fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
+    let model_input_path = submatches.value_of("model_input_path");
+    let model_output_path = submatches.value_of("model_output_path");
+    let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
+    let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
+    let visualize = matches.is_present("visualize");
+    println!("Executing snake training..");
+    snake::main_snake_teach_nn(
+        model_input_path,
+        model_output_path,
+        log_every_n,
+        write_every_n,
+        visualize,
+    );
+}
+
+fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {
+    let model_input_path = submatches.value_of("model_input_path").unwrap();
+    let visualize = matches.is_present("visualize");
+    // TODO(lenny): reconsider naming for log_every_n
+    let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
+    println!("Executing snake demo..");
+    snake::main_snake_demo_nn(model_input_path, log_every_n, !visualize);
 }
