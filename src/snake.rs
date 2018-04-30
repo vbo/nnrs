@@ -353,15 +353,16 @@ pub fn main_snake_teach_nn(load_from_file: bool,
         nn = network::Network::load_from_file(model_path);
     } else {
         println!("Creating new network");
-        nn = network::Network::new(N_INPUTS, 1);
-
-        let inputs_id = nn.input_layer();
-        let l1_id = nn.add_hidden_layer(18);
-        let l2_id = nn.add_hidden_layer(9);
+        let shape = [N_INPUTS, 1024, 512, 1];
+        nn = network::Network::new(shape[0], shape[shape.len() - 1]);
+        let mut prev_layer = nn.input_layer();
+        for i in 1..shape.len() - 1 {
+            let mut layer = nn.add_hidden_layer(18);
+            nn.add_layer_dependency(layer, prev_layer);
+            prev_layer = layer;
+        }
         let outputs_id = nn.output_layer();
-        nn.add_layer_dependency(outputs_id, l2_id);
-        nn.add_layer_dependency(l2_id, l1_id);
-        nn.add_layer_dependency(l1_id, inputs_id);
+        nn.add_layer_dependency(outputs_id, prev_layer);
     }
     let mut examples_processed = 0;
     let mut sessions_processed = 0;
