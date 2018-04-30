@@ -162,7 +162,7 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
             state.map.set_tile_at(old_pos, SnakeTile::Body);
 
             let mut iters = 0;
-			let mut game_over = false;
+            let mut game_over = false;
             while iters < 100 {
                 let mut rng = rand::thread_rng();
                 let pos_x = Range::new(0, state.map.width).ind_sample(&mut rng);
@@ -174,9 +174,9 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
 
                 iters += 1;
             }
-			if (iters == 100) {
-				game_over = true; //all map is most likely filled.
-			}
+            if (iters == 100) {
+                game_over = true; //all map is most likely filled.
+            }
             StepResult {
                 state: state,
                 game_over: game_over,
@@ -267,10 +267,12 @@ fn get_next_input_with_strat<R: rand::Rng>(
     return (possible_snake_inputs[i], true);
 }
 
-fn teach_nn(nn: &mut network::Network,
-            state: &GameState,
-            snake_input: SnakeInput,
-            true_output: f64) {
+fn teach_nn(
+    nn: &mut network::Network,
+    state: &GameState,
+    snake_input: SnakeInput,
+    true_output: f64,
+) {
     let mut inputs = convert_state_to_network_inputs(state);
     set_snake_input_in_network_inputs(&mut inputs, snake_input);
     {
@@ -301,7 +303,7 @@ fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
 pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool) {
     let mut nn = network::Network::load_from_file(model_path);
     let mut sessions_processed = 0;
-	let mut avg_score: f64 = 0.0;
+    let mut avg_score: f64 = 0.0;
     while sessions_processed < log_every_n {
         let head_pos = (0, 0);
         let mut state = GameState {
@@ -329,7 +331,7 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool)
                 game_over: game_over,
             } = snake_step(state, input);
             state = new_state;
-			done = game_over;
+            done = game_over;
             if done {
                 avg_score += state.score;
             }
@@ -338,16 +340,22 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool)
                 thread::sleep_ms(SLEEP_INTERVAL_MS);
             }
         }
-		sessions_processed += 1;
+        sessions_processed += 1;
     }
-    println!("Avg score: {}, games played {}", avg_score / sessions_processed as f64, sessions_processed);
+    println!(
+        "Avg score: {}, games played {}",
+        avg_score / sessions_processed as f64,
+        sessions_processed
+    );
 }
 
-pub fn main_snake_teach_nn(model_input_path: Option<&str>,
-                           model_output_path: Option<&str>,
-                           log_every_n: usize,
-                           write_every_n: usize,
-                           demo_mode: bool) {
+pub fn main_snake_teach_nn(
+    model_input_path: Option<&str>,
+    model_output_path: Option<&str>,
+    log_every_n: usize,
+    write_every_n: usize,
+    demo_mode: bool,
+) {
     let mut nn;
     if let Some(model_input_path) = model_input_path {
         println!("Loading the network from file {}", model_input_path);
@@ -367,7 +375,7 @@ pub fn main_snake_teach_nn(model_input_path: Option<&str>,
     }
     let mut examples_processed = 0;
     let mut sessions_processed = 0;
-	let mut avg_score: f64 = 0.0;
+    let mut avg_score: f64 = 0.0;
     loop {
         let head_pos = (0, 0);
         let mut state = GameState {
@@ -379,10 +387,11 @@ pub fn main_snake_teach_nn(model_input_path: Option<&str>,
         let mut rng = rand::thread_rng();
 
         let mut old_state = state.clone();
-		let mut old_input = SnakeInput::Down;
+        let mut old_input = SnakeInput::Down;
         let mut session: Vec<SessionStep> = Vec::new();
         while !done {
-            let (input, is_optimal) = get_next_input_with_strat(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
+            let (input, is_optimal) =
+                get_next_input_with_strat(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
             old_state = state.clone();
             session.push(SessionStep {
                 state: old_state,
@@ -394,35 +403,39 @@ pub fn main_snake_teach_nn(model_input_path: Option<&str>,
                 game_over: game_over,
             } = snake_step(state, input);
             state = new_state;
-			done = game_over;
-			if demo_mode {
-				draw_ascii(&mut stdout(), &state.map);
-				thread::sleep_ms(SLEEP_INTERVAL_MS);
-			}
+            done = game_over;
+            if demo_mode {
+                draw_ascii(&mut stdout(), &state.map);
+                thread::sleep_ms(SLEEP_INTERVAL_MS);
+            }
         }
         session.reverse();
-		avg_score += session[0].state.score;
-		if sessions_processed % log_every_n == 0 {
-			println!("Avg score: {}, games played {}", avg_score / log_every_n as f64, sessions_processed);
-			avg_score = 0.0;
-		}
+        avg_score += session[0].state.score;
+        if sessions_processed % log_every_n == 0 {
+            println!(
+                "Avg score: {}, games played {}",
+                avg_score / log_every_n as f64,
+                sessions_processed
+            );
+            avg_score = 0.0;
+        }
         let mut future_score = -2.0;
         for step in &mut session {
             if step.is_optimal {
-                step.state.score += 0.8*future_score;
+                step.state.score += 0.8 * future_score;
             }
             let mut delta_score = future_score - step.state.score;
-			if delta_score > 1.0 {
-				delta_score = 1.0;
-			}
-			if delta_score < -1.0 {
-				delta_score = -1.0;
-			}
+            if delta_score > 1.0 {
+                delta_score = 1.0;
+            }
+            if delta_score < -1.0 {
+                delta_score = -1.0;
+            }
             future_score = step.state.score;
-			step.state.score = delta_score; // writing into step exclusively for print debug
-            //TODO: the samples should be drawn at random
+            step.state.score = delta_score; // writing into step exclusively for print debug
+                                            //TODO: the samples should be drawn at random
             teach_nn(&mut nn, &step.state, step.action, delta_score);
-			examples_processed += 1;
+            examples_processed += 1;
             if examples_processed % network::BATCH_SIZE == 0 {
                 nn.apply_batch();
             }
@@ -433,6 +446,6 @@ pub fn main_snake_teach_nn(model_input_path: Option<&str>,
                 println!("Model saved");
             }
         }
-		sessions_processed += 1;
+        sessions_processed += 1;
     }
 }
