@@ -185,7 +185,7 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
     }
 }
 
-pub fn main_snake_random() {
+pub fn _unused_main_snake_random() {
     let head_pos = (4, 4);
     let mut state = GameState {
         map: SnakeMap::example((10, 10), head_pos),
@@ -249,6 +249,7 @@ fn get_next_input_with_strat<R: rand::Rng>(
     random_move_prob: f64,
     rng: &mut R,
 ) -> (SnakeInput, bool) {
+    // TODO(vbo): remember prediction
     use self::SnakeInput::*;
     let mut inputs = convert_state_to_network_inputs(state);
     let possible_snake_inputs = [Up, Down, Left, Right];
@@ -366,7 +367,7 @@ pub fn main_snake_teach_nn(
         nn = network::Network::new(shape[0], shape[shape.len() - 1]);
         let mut prev_layer = nn.input_layer();
         for i in 1..shape.len() - 1 {
-            let mut layer = nn.add_hidden_layer(18);
+            let mut layer = nn.add_hidden_layer(shape[i]);
             nn.add_layer_dependency(layer, prev_layer);
             prev_layer = layer;
         }
@@ -377,6 +378,7 @@ pub fn main_snake_teach_nn(
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
     loop {
+        // TODO(vbo): randomize
         let head_pos = (0, 0);
         let mut state = GameState {
             map: SnakeMap::example((MAP_WIDTH, MAP_HEIGHT), head_pos),
@@ -385,19 +387,16 @@ pub fn main_snake_teach_nn(
 
         let mut done = false;
         let mut rng = rand::thread_rng();
-
-        let mut old_state = state.clone();
-        let mut old_input = SnakeInput::Down;
         let mut session: Vec<SessionStep> = Vec::new();
         while !done {
             let (input, is_optimal) =
                 get_next_input_with_strat(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
-            old_state = state.clone();
             session.push(SessionStep {
-                state: old_state,
+                state: state.clone(),
                 action: input,
                 is_optimal: is_optimal,
             });
+
             let StepResult {
                 state: new_state,
                 game_over: game_over,
@@ -409,6 +408,7 @@ pub fn main_snake_teach_nn(
                 thread::sleep_ms(SLEEP_INTERVAL_MS);
             }
         }
+
         session.reverse();
         avg_score += session[0].state.score;
         if sessions_processed % log_every_n == 0 {
@@ -419,10 +419,15 @@ pub fn main_snake_teach_nn(
             );
             avg_score = 0.0;
         }
+
+        // TODO(vbo): make sure delta is correct, or just do it separately.
+        // TODO(vbo): sigmoid 0..1.
+        // TODO(vbo): collect a bunch of samples, extract random portion and train on it.
         let mut future_score = -2.0;
+        const FORGET_RATE: f64 = 0.8;
         for step in &mut session {
             if step.is_optimal {
-                step.state.score += 0.8 * future_score;
+                step.state.score += FORGET_RATE * future_score;
             }
             let mut delta_score = future_score - step.state.score;
             if delta_score > 1.0 {
@@ -433,9 +438,10 @@ pub fn main_snake_teach_nn(
             }
             future_score = step.state.score;
             step.state.score = delta_score; // writing into step exclusively for print debug
-                                            //TODO: the samples should be drawn at random
+
             teach_nn(&mut nn, &step.state, step.action, delta_score);
             examples_processed += 1;
+            // TODO(vbo): BATCH_SIZE should be app, not lib part.
             if examples_processed % network::BATCH_SIZE == 0 {
                 nn.apply_batch();
             }

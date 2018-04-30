@@ -27,8 +27,8 @@ Processed (diff etc):
 {s, Up, 0.2} -> 1
 {s, Up, 0.2} -> 0
 {s, Up, 0.2} -> 0 ::> 0 + 0.2*(1 + 0.2*(-1.5)*0.99)
-{s, Up, 0.2} -> 1 ::> 1 + 0.2*(-1.5)*0.99
-{s, Up, 0.2} -> 0 ::> acc_true_gain + future_pred_gain*future_acc_true_gain*forget_rate = 0 + 0.8*(-2)*0.99 = -1.5
+{s, Up, 0.2} -> 1 ::> FUT_RANDOM? 1 : 1 + 0.2*(-1.5)*0.99
+{s, Up, 0.2} -> 0 ::> acc_true_gain + future_pred_gain*future_acc_true_gain*forget_rate = 1 + 0.8*(-2)*0.99 = -1.5
 {s, Up, 0.8} -> 0 ::> game_over_cost = -2
 
 
