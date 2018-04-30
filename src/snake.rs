@@ -420,26 +420,22 @@ pub fn main_snake_teach_nn(
             avg_score = 0.0;
         }
 
-        // TODO(vbo): make sure delta is correct, or just do it separately.
         // TODO(vbo): sigmoid 0..1.
         // TODO(vbo): collect a bunch of samples, extract random portion and train on it.
-        let mut future_score = -2.0;
         const FORGET_RATE: f64 = 0.8;
+        let mut future_score = session[0].state.score - 2.0;
         for step in &mut session {
+            let tmp_score = step.state.score;
+            step.state.score = future_score - step.state.score;
+            future_score = tmp_score;
+        }
+        for i in 1..session.len() {
+            let next_score = session[i-1].state.score;
+            let step = &mut session[i];
             if step.is_optimal {
-                step.state.score += FORGET_RATE * future_score;
+                step.state.score += FORGET_RATE * next_score;
             }
-            let mut delta_score = future_score - step.state.score;
-            if delta_score > 1.0 {
-                delta_score = 1.0;
-            }
-            if delta_score < -1.0 {
-                delta_score = -1.0;
-            }
-            future_score = step.state.score;
-            step.state.score = delta_score; // writing into step exclusively for print debug
-
-            teach_nn(&mut nn, &step.state, step.action, delta_score);
+            teach_nn(&mut nn, &step.state, step.action, step.state.score);
             examples_processed += 1;
             // TODO(vbo): BATCH_SIZE should be app, not lib part.
             if examples_processed % network::BATCH_SIZE == 0 {
