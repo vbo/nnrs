@@ -5,6 +5,7 @@ use rand;
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use math::Vector;
+use math::pow;
 use network;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
@@ -451,12 +452,10 @@ pub fn main_snake_teach_nn(
         // To transform score to be from 0 to 1: (score - min_score) / (max_score - min_score)
         // This mast be done as a last step to avoid passing positive values to previous score
         // for non-apple moves.
-        let max_score = (MAP_WIDTH*MAP_HEIGHT) as f64 - 1.0;
+        let max_score = pow(1.0 + FORGET_RATE, MAP_WIDTH*MAP_HEIGHT);
         for step in &mut session {
             step.state.score = (step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST);
         }
-        // println!("{:?}", session);
-        // break;
         if sessions_processed % write_every_n == 0 {
             if let Some(model_output_path) = model_output_path {
                 nn.write_to_file(&model_output_path);
