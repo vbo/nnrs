@@ -38,7 +38,7 @@ pub enum SnakeInput {
 // TODO(vbo): create macros to get number of values in enum
 const SNAKE_INPUT_SIZE: usize = 4;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum SnakeTile {
     Empty,
     Fruit,
@@ -72,22 +72,22 @@ impl TileMap<SnakeTile> for SnakeMap {
 }
 
 impl SnakeMap {
-    pub fn new(width: usize, height: usize, head_pos: (usize, usize)) -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         SnakeMap {
             width: width,
             height: height,
             tiles: vec![SnakeTile::Empty; width * height],
-            body: vec![head_pos; 1],
+            body: Vec::<(usize, usize)>::new(),
         }
     }
 
-    pub fn example(dims: (usize, usize), head_pos: (usize, usize)) -> Self {
-        let (width, height) = dims;
-        assert!(width >= 2);
-        assert!(height >= 2);
-        let mut map = SnakeMap::new(width, height, head_pos);
+    pub fn random(width: usize, height: usize) -> Self {
+        let mut map = SnakeMap::new(width, height);
+        let head_pos = get_random_empty_tile(&map).unwrap();
         map.set_tile_at(head_pos, SnakeTile::Head);
-        map.set_tile_at((1, 1), SnakeTile::Fruit);
+        map.body.push(head_pos);
+        let fruit_pos = get_random_empty_tile(&map).unwrap();
+        map.set_tile_at(fruit_pos, SnakeTile::Fruit);
         return map;
     }
 
@@ -163,19 +163,12 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
 
             let mut iters = 0;
             let mut game_over = false;
-            while iters < 100 {
-                let mut rng = rand::thread_rng();
-                let pos_x = Range::new(0, state.map.width).ind_sample(&mut rng);
-                let pos_y = Range::new(0, state.map.height).ind_sample(&mut rng);
-                if let SnakeTile::Empty = state.map.get_tile_at(pos_x, pos_y) {
-                    state.map.set_tile_at((pos_x, pos_y), SnakeTile::Fruit);
-                    break;
+            let next_fruit_pos = get_random_empty_tile(&state.map);
+            match next_fruit_pos {
+                Some(pos) => {
+                    state.map.set_tile_at((pos.0, pos.1), SnakeTile::Fruit);
                 }
-
-                iters += 1;
-            }
-            if (iters == 100) {
-                game_over = true; //all map is most likely filled.
+                None => game_over = true,
             }
             StepResult {
                 state: state,
@@ -185,10 +178,26 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
     }
 }
 
+fn get_random_empty_tile(map: &SnakeMap) -> Option<(usize, usize)> {
+    let mut free_tiles = Vec::<(usize, usize)>::new();
+    for y in 0..map.height {
+        for x in 0..map.width {
+            if map.get_tile_at(x, y) == SnakeTile::Empty {
+                free_tiles.push((x,y));
+            }
+        }
+    }
+    if free_tiles.len() == 0 {
+        return None;
+    }
+    let mut rng = rand::thread_rng();
+    let index = Range::new(0, free_tiles.len()).ind_sample(&mut rng);
+    return Some(free_tiles[index]);
+}
+
 pub fn _unused_main_snake_random() {
-    let head_pos = (4, 4);
     let mut state = GameState {
-        map: SnakeMap::example((10, 10), head_pos),
+        map: SnakeMap::random(10, 10),
         score: 0.0,
     };
 
@@ -309,7 +318,7 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool)
     while sessions_processed < log_every_n {
         let head_pos = (0, 0);
         let mut state = GameState {
-            map: SnakeMap::example((MAP_WIDTH, MAP_HEIGHT), head_pos),
+            map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
             score: 0.0,
         };
 
@@ -379,10 +388,8 @@ pub fn main_snake_teach_nn(
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
     loop {
-        // TODO(vbo): randomize
-        let head_pos = (0, 0);
         let mut state = GameState {
-            map: SnakeMap::example((MAP_WIDTH, MAP_HEIGHT), head_pos),
+            map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
             score: 0.0,
         };
 
