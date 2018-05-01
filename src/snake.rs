@@ -5,10 +5,18 @@ use rand;
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use math::Vector;
-use math::pow;
 use network;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
+
+const FRUIT_GAIN: f64 = 1.0;
+const FORGET_RATE: f64 = 0.2;
+const GAME_OVER_COST: f64 = -1.0;
+
+const MAP_WIDTH: usize = 3;
+const MAP_HEIGHT: usize = 3;
+const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
+const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
 
 #[derive(Clone, Debug)]
 pub struct GameState {
@@ -156,7 +164,7 @@ fn snake_step(mut state: GameState, input: SnakeInput) -> StepResult {
             game_over: true,
         },
         SnakeTile::Fruit => {
-            state.score += 1.0;
+            state.score += FRUIT_GAIN;
             // add new head to body
             state.map.body.push(new_pos);
             state.map.set_tile_at(new_pos, SnakeTile::Head);
@@ -224,11 +232,6 @@ pub fn _unused_main_snake_random() {
         thread::sleep_ms(SLEEP_INTERVAL_MS);
     }
 }
-
-const MAP_WIDTH: usize = 3;
-const MAP_HEIGHT: usize = 3;
-const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
-const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
 
 fn convert_state_to_network_inputs(state: &GameState) -> Vec<f64> {
     assert!(state.map.width == MAP_WIDTH);
@@ -388,6 +391,7 @@ pub fn main_snake_teach_nn(
     let mut examples_processed = 0;
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
+    let max_score = get_max_score();
     loop {
         let mut state = GameState {
             map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
@@ -430,8 +434,6 @@ pub fn main_snake_teach_nn(
         }
 
         // TODO(vbo): collect a bunch of samples, extract random portion and train on it.
-        const FORGET_RATE: f64 = 0.2;
-        const GAME_OVER_COST: f64 = -1.0;
         let mut future_score = session[0].state.score + GAME_OVER_COST;
         for step in &mut session {
             let tmp_score = step.state.score;
@@ -452,7 +454,6 @@ pub fn main_snake_teach_nn(
         // To transform score to be from 0 to 1: (score - min_score) / (max_score - min_score)
         // This mast be done as a last step to avoid passing positive values to previous score
         // for non-apple moves.
-        let max_score = pow(1.0 + FORGET_RATE, MAP_WIDTH*MAP_HEIGHT);
         for step in &mut session {
             step.state.score = (step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST);
         }
@@ -464,4 +465,12 @@ pub fn main_snake_teach_nn(
         }
         sessions_processed += 1;
     }
+}
+
+fn get_max_score() -> f64 {
+    let mut res = GAME_OVER_COST;
+    for i in 0..MAP_WIDTH*MAP_HEIGHT-1 {
+        res = res*FORGET_RATE + FRUIT_GAIN;
+    }
+    return res;
 }

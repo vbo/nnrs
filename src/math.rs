@@ -332,10 +332,3 @@ impl Vector {
     }
 }
 
-pub fn pow(base: f64, power: usize) -> f64 {
-    let mut res = 1.0;
-    for i in 0..power {
-        res *= base;
-    }
-    return res;
-}
