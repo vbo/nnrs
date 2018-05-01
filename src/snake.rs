@@ -301,8 +301,9 @@ fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
     return (max_i, max);
 }
 
-pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool) {
+pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool) {
     let mut nn = network::Network::load_from_file(model_path);
+    println!("Model extracted from file...");
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
     while sessions_processed < log_every_n {
@@ -315,14 +316,14 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool)
         let mut done = false;
         let mut rng = rand::thread_rng();
 
-        if !test_mode {
+        if visualize {
             print!("\x1B[2J");
             draw_ascii(&mut stdout(), &state.map);
             thread::sleep_ms(SLEEP_INTERVAL_MS);
         }
         while !done {
             let (input, is_optimal) = get_next_input_with_strat(&mut nn, &state, 0.0, &mut rng);
-            if !test_mode {
+            if visualize {
                 print!("\x1B[2J");
                 print!("\x1B[1;1H");
                 println!("{:?}", input);
@@ -336,7 +337,7 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, test_mode: bool)
             if done {
                 avg_score += state.score;
             }
-            if !test_mode {
+            if visualize {
                 draw_ascii(&mut stdout(), &state.map);
                 thread::sleep_ms(SLEEP_INTERVAL_MS);
             }
@@ -363,7 +364,7 @@ pub fn main_snake_teach_nn(
         nn = network::Network::load_from_file(model_input_path);
     } else {
         println!("Creating new network");
-        let shape = [N_INPUTS, 18, 9, 1];
+        let shape = [N_INPUTS, 32, 16, 1];
         nn = network::Network::new(shape[0], shape[shape.len() - 1]);
         let mut prev_layer = nn.input_layer();
         for i in 1..shape.len() - 1 {
@@ -420,10 +421,10 @@ pub fn main_snake_teach_nn(
             avg_score = 0.0;
         }
 
-        // TODO(vbo): sigmoid 0..1.
         // TODO(vbo): collect a bunch of samples, extract random portion and train on it.
-        const FORGET_RATE: f64 = 0.8;
-        let mut future_score = session[0].state.score - 2.0;
+        const FORGET_RATE: f64 = 0.2;
+        const GAME_OVER_COST: f64 = -1.0;
+        let mut future_score = session[0].state.score + GAME_OVER_COST;
         for step in &mut session {
             let tmp_score = step.state.score;
             step.state.score = future_score - step.state.score;
@@ -432,9 +433,7 @@ pub fn main_snake_teach_nn(
         for i in 1..session.len() {
             let next_score = session[i-1].state.score;
             let step = &mut session[i];
-            if step.is_optimal {
-                step.state.score += FORGET_RATE * next_score;
-            }
+            step.state.score += FORGET_RATE * next_score;
             teach_nn(&mut nn, &step.state, step.action, step.state.score);
             examples_processed += 1;
             // TODO(vbo): BATCH_SIZE should be app, not lib part.
@@ -442,6 +441,15 @@ pub fn main_snake_teach_nn(
                 nn.apply_batch();
             }
         }
+        // To transform score to be from 0 to 1: (score - min_score) / (max_score - min_score)
+        // This mast be done as a last step to avoid passing positive values to previous score
+        // for non-apple moves.
+        let max_score = (MAP_WIDTH*MAP_HEIGHT) as f64 - 1.0;
+        for step in &mut session {
+            step.state.score = (step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST);
+        }
+        // println!("{:?}", session);
+        // break;
         if sessions_processed % write_every_n == 0 {
             if let Some(model_output_path) = model_output_path {
                 nn.write_to_file(&model_output_path);

@@ -49,7 +49,7 @@ fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
     let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
     let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
     let visualize = matches.is_present("visualize");
-    println!("Executing snake training..");
+    println!("Executing snake training...");
     snake::main_snake_teach_nn(
         model_input_path,
         model_output_path,
@@ -64,6 +64,6 @@ fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {
     let visualize = matches.is_present("visualize");
     // TODO(lenny): reconsider naming for log_every_n
     let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
-    println!("Executing snake demo..");
+    println!("Executing snake demo...");
     snake::main_snake_demo_nn(model_input_path, log_every_n, !visualize);
 }
