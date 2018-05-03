@@ -32,6 +32,7 @@ fn main() {
         ("mnist_train", Some(submatches)) => execute_mnist_train(&matches, submatches),
         ("snake_train", Some(submatches)) => execute_snake_train(&matches, submatches),
         ("snake_demo", Some(submatches)) => execute_snake_demo(&matches, submatches),
+        ("snake_gen", Some(submatches)) => execute_snake_gen(&matches, submatches),
         (command_name, Some(_)) => panic!("Command not implemented: {}.", command_name),
         _ => panic!("No subcommand supplied - this should not happen."),
     }
@@ -57,6 +58,14 @@ fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
         write_every_n,
         visualize,
     );
+}
+
+fn execute_snake_gen(matches: &ArgMatches, submatches: &ArgMatches) {
+    let model_input_path = submatches.value_of("model_input_path").unwrap();
+    let training_data_path = submatches.value_of("training_data_path").unwrap();
+    let save_n = get_int_arg(submatches, "save_n").unwrap();
+    println!("Executing snake gen...");
+    snake::main_snake_gen(model_input_path, training_data_path, save_n);
 }
 
 fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {

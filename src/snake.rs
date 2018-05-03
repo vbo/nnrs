@@ -1,30 +1,36 @@
 use std::io::prelude::*;
 use std::io::stdout;
 use std::thread;
-use rand;
+use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::fs::File;
+use std::hash::{Hash, Hasher};
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
 use math::Vector;
 use network;
 
+use serde_json;
+use rand;
+
 const SLEEP_INTERVAL_MS: u32 = 200;
 
 const FRUIT_GAIN: f64 = 1.0;
 const FORGET_RATE: f64 = 0.2;
-const GAME_OVER_COST: f64 = -1.0;
+const GAME_OVER_COST: f64 = -3.0;
 
 const MAP_WIDTH: usize = 3;
 const MAP_HEIGHT: usize = 3;
 const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
 const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct GameState {
     map: SnakeMap,
     score: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct SessionStep {
     state: GameState,
     action: SnakeInput,
@@ -36,7 +42,7 @@ struct StepResult {
     game_over: bool,
 }
 
-#[derive(Copy, Clone, Debug, Rand)]
+#[derive(Copy, Clone, Debug, Rand, Hash, Serialize)]
 pub enum SnakeInput {
     Up,
     Down,
@@ -47,7 +53,7 @@ pub enum SnakeInput {
 // TODO(vbo): create macros to get number of values in enum
 const SNAKE_INPUT_SIZE: usize = 4;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
 pub enum SnakeTile {
     Empty,
     Fruit,
@@ -62,7 +68,7 @@ pub trait TileMap<T> {
     fn set_tile_at(&mut self, xy: (usize, usize), tile: T);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SnakeMap {
     height: usize,
     width: usize,
@@ -192,7 +198,7 @@ fn get_random_empty_tile(map: &SnakeMap) -> Option<(usize, usize)> {
     for y in 0..map.height {
         for x in 0..map.width {
             if map.get_tile_at(x, y) == SnakeTile::Empty {
-                free_tiles.push((x,y));
+                free_tiles.push((x, y));
             }
         }
     }
@@ -256,8 +262,16 @@ fn set_snake_input_in_network_inputs(nn_input: &mut [f64], input: SnakeInput) {
     nn_input[nn_input.len() - 1 - offset] = 1.0;
 }
 
+fn get_state_action_hash(map: &SnakeMap, action: SnakeInput) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    map.body.hash(&mut hasher);
+    action.hash(&mut hasher);
+    return hasher.finish();
+}
+
 fn get_next_input_with_strat<R: rand::Rng>(
     nn: &mut network::Network,
+    visited: &mut HashSet<u64>,
     state: &GameState,
     random_move_prob: f64,
     rng: &mut R,
@@ -278,7 +292,14 @@ fn get_next_input_with_strat<R: rand::Rng>(
         snake_inputs_gains[i] = outputs.mem[0];
     }
     let (i, max_gain) = get_max_with_pos(snake_inputs_gains.as_slice());
-    return (possible_snake_inputs[i], true);
+    let state_hash = get_state_action_hash(&state.map, possible_snake_inputs[i]);
+    if visited.contains(&state_hash) {
+        let i = rng.gen_range(0, SNAKE_INPUT_SIZE);
+        return (possible_snake_inputs[i], false);
+    } else {
+        visited.insert(state_hash);
+        return (possible_snake_inputs[i], true);
+    }
 }
 
 fn teach_nn(
@@ -314,13 +335,101 @@ fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
     return (max_i, max);
 }
 
+pub fn main_snake_just_train(
+    model_input_path: &str,
+    model_output_path: &str,
+    training_data_path: &str,
+    write_every_n: usize,
+    log_every_n: usize,
+    num_epochs: usize,
+) {
+    // TODO(vbo):
+    // - load training_data from disk
+    // - shuffle, extran batch-by-batch
+    //for step in &mut session {
+    //    teach_nn(&mut nn, &step.state, step.action, step.state.score);
+    //    examples_processed += 1;
+    //    // TODO(vbo): BATCH_SIZE should be app, not lib part.
+    //    if examples_processed % network::BATCH_SIZE == 0 {
+    //        nn.apply_batch();
+    //    }
+    //}
+
+    //if sessions_processed % write_every_n == 0 {
+    //    if let Some(model_output_path) = model_output_path {
+    //        nn.write_to_file(&model_output_path);
+    //        println!("Model saved");
+    //    }
+    //}
+    //sessions_processed += 1;
+
+    // TODO(vbo):
+    // separate test set to track quality by playing on it.
+}
+
+pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
+    let mut training_data_file = File::create(&training_data_path).unwrap();
+    let mut nn = network::Network::load_from_file(model_path);
+    println!("Model extracted from file...");
+    let mut sessions_processed = 0;
+    let mut avg_score: f64 = 0.0;
+    while sessions_processed < save_n {
+        let mut state = GameState {
+            map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
+            score: 0.0,
+        };
+
+        let mut done = false;
+        let mut rng = rand::thread_rng();
+
+        let mut visited = HashSet::new();
+        let mut session = Vec::new();
+        while !done {
+            let (input, is_optimal) = get_next_input_with_strat(
+                &mut nn,
+                &mut visited,
+                &state,
+                RANDOM_MOVE_PROBABILITY,
+                &mut rng,
+            );
+            session.push(SessionStep {
+                state: state.clone(),
+                action: input,
+                is_optimal: is_optimal,
+            });
+
+            let StepResult {
+                state: new_state,
+                game_over: game_over,
+            } = snake_step(state, input);
+            state = new_state;
+            done = game_over;
+            if done {
+                avg_score += state.score;
+            }
+        }
+
+        score_session(&mut session);
+        for step in &session {
+            serde_json::to_writer(&training_data_file, step).unwrap();
+            write!(training_data_file, "\n");
+        }
+
+        sessions_processed += 1;
+    }
+    println!(
+        "Avg score: {}, games played {}",
+        avg_score / sessions_processed as f64,
+        sessions_processed
+    );
+}
+
 pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool) {
     let mut nn = network::Network::load_from_file(model_path);
     println!("Model extracted from file...");
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
     while sessions_processed < log_every_n {
-        let head_pos = (0, 0);
         let mut state = GameState {
             map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
             score: 0.0,
@@ -334,8 +443,13 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool)
             draw_ascii(&mut stdout(), &state.map);
             thread::sleep_ms(SLEEP_INTERVAL_MS);
         }
+        let mut visited = HashSet::new();
         while !done {
-            let (input, is_optimal) = get_next_input_with_strat(&mut nn, &state, 0.0, &mut rng);
+            let (input, is_optimal) =
+                get_next_input_with_strat(&mut nn, &mut visited, &state, 0.0, &mut rng);
+            if !is_optimal {
+                panic!("Same state reached.");
+            }
             if visualize {
                 print!("\x1B[2J");
                 print!("\x1B[1;1H");
@@ -364,6 +478,21 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool)
     );
 }
 
+/*
+fn make_session_nn(
+    nn: &mut network::Network) -> Vec<SessionStep> {
+    Vec::new();
+}
+*/
+
+fn visualize_session(session: &Vec<SessionStep>) {
+    for step in session {
+        draw_ascii(&mut stdout(), &step.state.map);
+    }
+}
+
+fn generate_dataset() {}
+
 pub fn main_snake_teach_nn(
     model_input_path: Option<&str>,
     model_output_path: Option<&str>,
@@ -391,7 +520,6 @@ pub fn main_snake_teach_nn(
     let mut examples_processed = 0;
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
-    let max_score = get_max_score();
     loop {
         let mut state = GameState {
             map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
@@ -401,9 +529,15 @@ pub fn main_snake_teach_nn(
         let mut done = false;
         let mut rng = rand::thread_rng();
         let mut session: Vec<SessionStep> = Vec::new();
+        let mut visited = HashSet::new();
         while !done {
-            let (input, is_optimal) =
-                get_next_input_with_strat(&mut nn, &state, RANDOM_MOVE_PROBABILITY, &mut rng);
+            let (input, is_optimal) = get_next_input_with_strat(
+                &mut nn,
+                &mut visited,
+                &state,
+                RANDOM_MOVE_PROBABILITY,
+                &mut rng,
+            );
             session.push(SessionStep {
                 state: state.clone(),
                 action: input,
@@ -422,28 +556,20 @@ pub fn main_snake_teach_nn(
             }
         }
 
-        session.reverse();
-        avg_score += session[0].state.score;
+        avg_score += session[session.len() - 1].state.score;
         if sessions_processed % log_every_n == 0 {
             println!(
-                "Avg score: {}, games played {}",
+                "Avg score: {}, games played {}, steps processed: {}",
                 avg_score / log_every_n as f64,
-                sessions_processed
+                sessions_processed,
+                examples_processed
             );
             avg_score = 0.0;
         }
 
         // TODO(vbo): collect a bunch of samples, extract random portion and train on it.
-        let mut future_score = session[0].state.score + GAME_OVER_COST;
+        score_session(&mut session);
         for step in &mut session {
-            let tmp_score = step.state.score;
-            step.state.score = future_score - step.state.score;
-            future_score = tmp_score;
-        }
-        for i in 1..session.len() {
-            let next_score = session[i-1].state.score;
-            let step = &mut session[i];
-            step.state.score += FORGET_RATE * next_score;
             teach_nn(&mut nn, &step.state, step.action, step.state.score);
             examples_processed += 1;
             // TODO(vbo): BATCH_SIZE should be app, not lib part.
@@ -451,12 +577,7 @@ pub fn main_snake_teach_nn(
                 nn.apply_batch();
             }
         }
-        // To transform score to be from 0 to 1: (score - min_score) / (max_score - min_score)
-        // This mast be done as a last step to avoid passing positive values to previous score
-        // for non-apple moves.
-        for step in &mut session {
-            step.state.score = (step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST);
-        }
+
         if sessions_processed % write_every_n == 0 {
             if let Some(model_output_path) = model_output_path {
                 nn.write_to_file(&model_output_path);
@@ -467,10 +588,42 @@ pub fn main_snake_teach_nn(
     }
 }
 
+fn score_session(session: &mut Vec<SessionStep>) {
+    let max_score = get_max_score();
+
+    // Diff the scores
+    for i in 0..session.len() - 1 {
+        session[i].state.score = session[i + 1].state.score - session[i].state.score;
+    }
+    let session_len = session.len();
+    session[session_len - 1].state.score = GAME_OVER_COST;
+
+    // Propagate "future benefits"
+    session.reverse();
+    for i in 1..session.len() {
+        let is_next_action_optimal = session[i - 1].is_optimal;
+        let next_score = session[i - 1].state.score;
+        let step = &mut session[i];
+        // If next action would be random, we want only the score of the next state
+        // without added value of future benefits - they are not trustworthy.
+        if is_next_action_optimal {
+            step.state.score = step.state.score + FORGET_RATE * next_score;
+        }
+    }
+
+    // Normalize scores
+    // To transform score to be from 0 to 1: (score - min_score) / (max_score - min_score)
+    // This must be done as a last step to avoid passing positive values to previous score
+    // for non-apple moves.
+    for step in session {
+        step.state.score = (step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST);
+    }
+}
+
 fn get_max_score() -> f64 {
     let mut res = GAME_OVER_COST;
-    for i in 0..MAP_WIDTH*MAP_HEIGHT-1 {
-        res = res*FORGET_RATE + FRUIT_GAIN;
+    for i in 0..MAP_WIDTH * MAP_HEIGHT - 1 {
+        res = res * FORGET_RATE + FRUIT_GAIN;
     }
     return res;
 }

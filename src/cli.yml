@@ -53,9 +53,30 @@ subcommands:
         about: Play snake using a trained model
         args:
             - model_input_path:
+                short: i
+                long: model_input
                 takes_value: true
                 required: true
                 help: Path to read a model from
             - visualize:
                 long: visualize
                 help: Whether or not to visualize plays
+    - snake_gen:
+        about: Generate training data
+        args:
+            - model_input_path:
+                short: i
+                long: model_input
+                takes_value: true
+                required: true
+                help: Path to read a model from
+            - training_data_path:
+                short: t
+                long: training_data
+                takes_value: true
+                required: true
+                help: Path to output training data stream
+            - save_n:
+                long: save
+                default_value: "500000"
+                help: Will output this amount of training data steps
