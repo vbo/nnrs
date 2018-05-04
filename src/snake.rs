@@ -1,3 +1,5 @@
+use std::io::BufReader;
+use std::io::BufRead;
 use std::io::prelude::*;
 use std::io::stdout;
 use std::thread;
@@ -24,13 +26,13 @@ const MAP_HEIGHT: usize = 3;
 const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
 const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameState {
     map: SnakeMap,
     score: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct SessionStep {
     state: GameState,
     action: SnakeInput,
@@ -42,7 +44,7 @@ struct StepResult {
     game_over: bool,
 }
 
-#[derive(Copy, Clone, Debug, Rand, Hash, Serialize)]
+#[derive(Copy, Clone, Debug, Rand, Hash, Serialize, Deserialize)]
 pub enum SnakeInput {
     Up,
     Down,
@@ -53,7 +55,7 @@ pub enum SnakeInput {
 // TODO(vbo): create macros to get number of values in enum
 const SNAKE_INPUT_SIZE: usize = 4;
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SnakeTile {
     Empty,
     Fruit,
@@ -68,7 +70,7 @@ pub trait TileMap<T> {
     fn set_tile_at(&mut self, xy: (usize, usize), tile: T);
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SnakeMap {
     height: usize,
     width: usize,
@@ -335,36 +337,74 @@ fn get_max_with_pos(xs: &[f64]) -> (usize, f64) {
     return (max_i, max);
 }
 
-pub fn main_snake_just_train(
+fn read_training_data_from_file(path: &str, count: usize) -> Vec<SessionStep> {
+    let mut result = Vec::with_capacity(count);
+    let file = File::open(path).unwrap();
+    let bufreader = BufReader::new(&file);
+    let mut steps_read = 0usize;
+    for line in bufreader.lines() {
+        if steps_read >= count {
+            break;
+        }
+        let line = line.unwrap();
+        let session_step = serde_json::from_str(&line).unwrap();
+        result.push(session_step);
+        steps_read += 1;
+    }
+
+    result.shrink_to_fit();
+    return result;
+}
+
+pub fn main_snake_train(
     model_input_path: &str,
     model_output_path: &str,
     training_data_path: &str,
+    training_data_max: usize,
     write_every_n: usize,
     log_every_n: usize,
     num_epochs: usize,
 ) {
-    // TODO(vbo):
-    // - load training_data from disk
-    // - shuffle, extran batch-by-batch
-    //for step in &mut session {
-    //    teach_nn(&mut nn, &step.state, step.action, step.state.score);
-    //    examples_processed += 1;
-    //    // TODO(vbo): BATCH_SIZE should be app, not lib part.
-    //    if examples_processed % network::BATCH_SIZE == 0 {
-    //        nn.apply_batch();
-    //    }
-    //}
+    let mut nn = network::Network::load_from_file(model_input_path);
+    println!("Starting model loaded from {}", training_data_path);
 
-    //if sessions_processed % write_every_n == 0 {
-    //    if let Some(model_output_path) = model_output_path {
-    //        nn.write_to_file(&model_output_path);
-    //        println!("Model saved");
-    //    }
-    //}
-    //sessions_processed += 1;
+    let training_data = read_training_data_from_file(training_data_path, training_data_max);
+    let mut training_data_indices: Vec<usize> = (0..training_data.len()).collect();
+    println!(
+        "Training data working set loaded from {}",
+        training_data_path
+    );
 
-    // TODO(vbo):
-    // separate test set to track quality by playing on it.
+    let mut examples_processed = 0;
+    let mut random_number_generator = rand::thread_rng();
+    for _ in 1..num_epochs + 1 {
+        random_number_generator.shuffle(&mut training_data_indices.as_mut_slice());
+        for training_data_index in &training_data_indices {
+            let sample_step = &training_data[*training_data_index];
+
+            teach_nn(
+                &mut nn,
+                &sample_step.state,
+                sample_step.action,
+                sample_step.state.score,
+            );
+            examples_processed += 1;
+            // TODO(vbo): BATCH_SIZE should be app, not lib part.
+            if examples_processed % network::BATCH_SIZE == 0 {
+                nn.apply_batch();
+            }
+
+            if examples_processed % write_every_n == 0 {
+                nn.write_to_file(&model_output_path);
+                println!("Model saved");
+            }
+
+            if examples_processed % log_every_n == 0 {
+                println!("Examples processed: {}", examples_processed);
+                evaluate_on_random_games(&mut nn, 1000);
+            }
+        }
+    }
 }
 
 pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
@@ -421,6 +461,51 @@ pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize)
         "Avg score: {}, games played {}",
         avg_score / sessions_processed as f64,
         sessions_processed
+    );
+}
+
+fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
+    let mut sessions_processed = 0;
+    let mut sum_score: f64 = 0.0;
+    let mut loops = 0;
+    while sessions_processed < count {
+        let mut state = GameState {
+            map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
+            score: 0.0,
+        };
+
+        let mut done = false;
+        let mut rng = rand::thread_rng();
+        let mut visited = HashSet::new();
+        while !done {
+            let (input, is_optimal) =
+                get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng);
+
+            if !is_optimal {
+                loops += 1;
+                sum_score += state.score;
+                break;
+            }
+
+            let StepResult {
+                state: new_state,
+                game_over: game_over,
+            } = snake_step(state, input);
+            state = new_state;
+            done = game_over;
+            if done {
+                sum_score += state.score;
+            }
+        }
+
+        sessions_processed += 1;
+    }
+
+    println!(
+        "Played: {}, avg score: {}, avg loops: {}",
+        count,
+        sum_score / count as f64,
+        loops as f64 / count as f64
     );
 }
 

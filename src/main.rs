@@ -30,6 +30,7 @@ fn main() {
 
     match matches.subcommand() {
         ("mnist_train", Some(submatches)) => execute_mnist_train(&matches, submatches),
+        ("snake_teach", Some(submatches)) => execute_snake_teach(&matches, submatches),
         ("snake_train", Some(submatches)) => execute_snake_train(&matches, submatches),
         ("snake_demo", Some(submatches)) => execute_snake_demo(&matches, submatches),
         ("snake_gen", Some(submatches)) => execute_snake_gen(&matches, submatches),
@@ -44,19 +45,39 @@ fn get_int_arg<T: FromStr>(matches: &ArgMatches, argname: &str) -> Option<T> {
 
 fn execute_mnist_train(matches: &ArgMatches, submatches: &ArgMatches) {}
 
-fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
+fn execute_snake_teach(matches: &ArgMatches, submatches: &ArgMatches) {
     let model_input_path = submatches.value_of("model_input_path");
     let model_output_path = submatches.value_of("model_output_path");
     let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
     let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
     let visualize = submatches.is_present("visualize");
-    println!("Executing snake training...");
+    println!("Executing snake teaching...");
     snake::main_snake_teach_nn(
         model_input_path,
         model_output_path,
         log_every_n,
         write_every_n,
         visualize,
+    );
+}
+
+fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
+    let model_input_path = submatches.value_of("model_input_path").unwrap();
+    let model_output_path = submatches.value_of("model_output_path").unwrap();
+    let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
+    let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
+    let training_data_path = submatches.value_of("training_data_path").unwrap();
+    let training_data_max = get_int_arg(submatches, "training_data_max").unwrap();
+    let num_epochs = get_int_arg(submatches, "num_epochs").unwrap();
+    println!("Executing snake training...");
+    snake::main_snake_train(
+        model_input_path,
+        model_output_path,
+        training_data_path,
+        training_data_max,
+        write_every_n,
+        log_every_n,
+        num_epochs,
     );
 }
 

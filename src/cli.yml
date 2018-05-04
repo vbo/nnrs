@@ -30,7 +30,40 @@ subcommands:
                 default_value: "50000"
                 help: Evaluate model and print results every N iterations
     - snake_train:
-        about: Train a model to play snake
+        about: Train a model on the given training data
+        args:
+            - model_input_path:
+                short: i
+                long: model_input
+                takes_value: true
+                help: Path to read a model from
+                required: true
+            - model_output_path:
+                short: o
+                long: model_output
+                takes_value: true
+                help: Path to write a model to
+                required: true
+            - training_data_path:
+                short: t
+                long: training_data
+                takes_value: true
+                help: Path to read training data from
+                required: true
+            - write_every_n:
+                long: write_every
+                default_value: "50000"
+                help: Will write a model every N iterations
+            - training_data_max:
+                long: training_data_max
+                default_value: "500000"
+                help: Training data working set size
+            - num_epochs:
+                long: num_epochs
+                default_value: "1000"
+                help: How many epochs
+    - snake_teach:
+        about: Teach a model to play snake
         args:
             - model_input_path:
                 short: i
