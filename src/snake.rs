@@ -19,12 +19,19 @@ const SLEEP_INTERVAL_MS: u32 = 200;
 
 const FRUIT_GAIN: f64 = 1.0;
 const FORGET_RATE: f64 = 0.2;
-const GAME_OVER_COST: f64 = -3.0;
+const GAME_OVER_COST: f64 = -0.5;
 
 const MAP_WIDTH: usize = 3;
 const MAP_HEIGHT: usize = 3;
 const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
 const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
+
+/// TODO(lenny): hidden layers > input layer experiment, number layers
+///
+///
+/// TODO(lenny): impl training data scoring debugger
+/// TODO(vbo): impl network perdiction debugger
+/// TODO(desh): add 3D cows and aliens
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameState {
@@ -691,9 +698,9 @@ fn score_session(session: &mut Vec<SessionStep>) {
         let step = &mut session[i];
         // If next action would be random, we want only the score of the next state
         // without added value of future benefits - they are not trustworthy.
-        if is_next_action_optimal {
+        //if is_next_action_optimal {
             step.state.score = step.state.score + FORGET_RATE * next_score;
-        }
+        //}
     }
 
     // Normalize scores
