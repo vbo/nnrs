@@ -54,7 +54,7 @@ fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
     let model_input_path = submatches.value_of("model_input_path").unwrap();
     let model_output_path = submatches.value_of("model_output_path").unwrap();
     let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
-    let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
+    let log_every_n = get_int_arg(submatches, "log_every_n").unwrap();
     let training_data_path = submatches.value_of("training_data_path").unwrap();
     let training_data_max = get_int_arg(submatches, "training_data_max").unwrap();
     let num_epochs = get_int_arg(submatches, "num_epochs").unwrap();
@@ -82,7 +82,7 @@ fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {
     let model_input_path = submatches.value_of("model_input_path").unwrap();
     let visualize = submatches.is_present("visualize");
     // TODO(lenny): reconsider naming for log_every_n
-    let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
+    let log_every_n = get_int_arg(submatches, "log_every_n").unwrap();
     println!("Executing snake demo...");
     snake::main_snake_demo_nn(model_input_path, log_every_n, visualize);
 }
