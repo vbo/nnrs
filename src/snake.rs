@@ -520,12 +520,12 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
     );
 }
 
-pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool) {
+pub fn main_snake_demo_nn(model_path: &str, games_to_play: usize, visualize: bool) {
     let mut nn = network::Network::load_from_file(model_path);
     println!("Model extracted from file...");
     let mut sessions_processed = 0;
     let mut avg_score: f64 = 0.0;
-    while sessions_processed < log_every_n {
+    while sessions_processed < games_to_play {
         let mut state = GameState {
             map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
             score: 0.0,

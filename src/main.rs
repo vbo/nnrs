@@ -81,8 +81,7 @@ fn execute_snake_gen(matches: &ArgMatches, submatches: &ArgMatches) {
 fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {
     let model_input_path = submatches.value_of("model_input_path").unwrap();
     let visualize = submatches.is_present("visualize");
-    // TODO(lenny): reconsider naming for log_every_n
-    let log_every_n = get_int_arg(submatches, "log_every_n").unwrap();
+    let games_to_play = get_int_arg(submatches, "games_to_play").unwrap();
     println!("Executing snake demo...");
-    snake::main_snake_demo_nn(model_input_path, log_every_n, visualize);
+    snake::main_snake_demo_nn(model_input_path, games_to_play, visualize);
 }
