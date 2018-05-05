@@ -62,6 +62,11 @@ subcommands:
                 long: num_epochs
                 default_value: "1000"
                 help: How many epochs
+            - log_every_n:
+                long: log_every_n
+                required: true
+                default_value: "1000"
+                help: How often to evaluate
     - snake_new:
         about: Create a new model to play snake
         args:

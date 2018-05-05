@@ -23,6 +23,7 @@ do
         --training_data "data/snake_t_${id}.dat" \
         --model_output "models/${id}t.json" \
         --training_data_max="${data_per_iter}" \
-        --num_epochs="${num_epochs}"
+        --num_epochs="${num_epochs}" \
+        --log_every_n=1000000
     mv "models/${id}t.json" "models/${id}.json"
 done
