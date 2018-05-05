@@ -624,6 +624,7 @@ fn score_session(session: &mut Vec<SessionStep>) {
         let step = &mut session[i];
         // If next action would be random, we want only the score of the next state
         // without added value of future benefits - they are not trustworthy.
+        // TODO(vbo) uncomment or delete the condition below
         //if is_next_action_optimal {
             step.state.score = step.state.score + FORGET_RATE * next_score;
         //}
