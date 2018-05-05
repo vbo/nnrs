@@ -46,4 +46,3 @@ Game session (rev 1):
 1. Play game randomly from start to game over.
 2. Note initial state, action and accumulated reward for each step.
 
-

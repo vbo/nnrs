@@ -30,7 +30,7 @@ fn main() {
 
     match matches.subcommand() {
         ("mnist_train", Some(submatches)) => execute_mnist_train(&matches, submatches),
-        ("snake_teach", Some(submatches)) => execute_snake_teach(&matches, submatches),
+        ("snake_new", Some(submatches)) => execute_snake_new(&matches, submatches),
         ("snake_train", Some(submatches)) => execute_snake_train(&matches, submatches),
         ("snake_demo", Some(submatches)) => execute_snake_demo(&matches, submatches),
         ("snake_gen", Some(submatches)) => execute_snake_gen(&matches, submatches),
@@ -45,20 +45,9 @@ fn get_int_arg<T: FromStr>(matches: &ArgMatches, argname: &str) -> Option<T> {
 
 fn execute_mnist_train(matches: &ArgMatches, submatches: &ArgMatches) {}
 
-fn execute_snake_teach(matches: &ArgMatches, submatches: &ArgMatches) {
-    let model_input_path = submatches.value_of("model_input_path");
-    let model_output_path = submatches.value_of("model_output_path");
-    let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
-    let log_every_n = get_int_arg(matches, "log_every_n").unwrap();
-    let visualize = submatches.is_present("visualize");
-    println!("Executing snake teaching...");
-    snake::main_snake_teach_nn(
-        model_input_path,
-        model_output_path,
-        log_every_n,
-        write_every_n,
-        visualize,
-    );
+fn execute_snake_new(matches: &ArgMatches, submatches: &ArgMatches) {
+    let model_output_path = submatches.value_of("model_output_path").unwrap();
+    snake::main_snake_new_nn(model_output_path);
 }
 
 fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {

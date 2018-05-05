@@ -26,12 +26,13 @@ const MAP_HEIGHT: usize = 3;
 const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
 const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
 
-/// TODO(lenny): hidden layers > input layer experiment, number layers
-///
-///
-/// TODO(lenny): impl training data scoring debugger
 /// TODO(vbo): impl network perdiction debugger
-/// TODO(desh): add 3D cows and aliens
+/// TODO(lenny): impl training data scoring debugger. This would allow us to understand if it's
+/// the network that is not learning or is it us who provide wrong score.
+/// TODO(lenny): it'd be cool to create two networks:
+/// - to predict the next state
+/// - to evaluate the state
+/// This way we get more information which layer is failing us.
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameState {
@@ -585,99 +586,21 @@ fn visualize_session(session: &Vec<SessionStep>) {
 
 fn generate_dataset() {}
 
-pub fn main_snake_teach_nn(
-    model_input_path: Option<&str>,
-    model_output_path: Option<&str>,
-    log_every_n: usize,
-    write_every_n: usize,
-    demo_mode: bool,
-) {
+pub fn main_snake_new_nn(model_output_path: &str) {
     let mut nn;
-    if let Some(model_input_path) = model_input_path {
-        println!("Loading the network from file {}", model_input_path);
-        nn = network::Network::load_from_file(model_input_path);
-    } else {
-        println!("Creating new network");
-        let shape = [N_INPUTS, 32, 16, 1];
-        nn = network::Network::new(shape[0], shape[shape.len() - 1]);
-        let mut prev_layer = nn.input_layer();
-        for i in 1..shape.len() - 1 {
-            let mut layer = nn.add_hidden_layer(shape[i]);
-            nn.add_layer_dependency(layer, prev_layer);
-            prev_layer = layer;
-        }
-        let outputs_id = nn.output_layer();
-        nn.add_layer_dependency(outputs_id, prev_layer);
+    println!("Creating new network");
+    let shape = [N_INPUTS, 36, 16, 4, 1];
+    nn = network::Network::new(shape[0], shape[shape.len() - 1]);
+    let mut prev_layer = nn.input_layer();
+    for i in 1..shape.len() - 1 {
+        let mut layer = nn.add_hidden_layer(shape[i]);
+        nn.add_layer_dependency(layer, prev_layer);
+        prev_layer = layer;
     }
-    let mut examples_processed = 0;
-    let mut sessions_processed = 0;
-    let mut avg_score: f64 = 0.0;
-    loop {
-        let mut state = GameState {
-            map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
-            score: 0.0,
-        };
-
-        let mut done = false;
-        let mut rng = rand::thread_rng();
-        let mut session: Vec<SessionStep> = Vec::new();
-        let mut visited = HashSet::new();
-        while !done {
-            let (input, is_optimal) = get_next_input_with_strat(
-                &mut nn,
-                &mut visited,
-                &state,
-                RANDOM_MOVE_PROBABILITY,
-                &mut rng,
-            );
-            session.push(SessionStep {
-                state: state.clone(),
-                action: input,
-                is_optimal: is_optimal,
-            });
-
-            let StepResult {
-                state: new_state,
-                game_over: game_over,
-            } = snake_step(state, input);
-            state = new_state;
-            done = game_over;
-            if demo_mode {
-                draw_ascii(&mut stdout(), &state.map);
-                thread::sleep_ms(SLEEP_INTERVAL_MS);
-            }
-        }
-
-        avg_score += session[session.len() - 1].state.score;
-        if sessions_processed % log_every_n == 0 {
-            println!(
-                "Avg score: {}, games played {}, steps processed: {}",
-                avg_score / log_every_n as f64,
-                sessions_processed,
-                examples_processed
-            );
-            avg_score = 0.0;
-        }
-
-        // TODO(vbo): collect a bunch of samples, extract random portion and train on it.
-        score_session(&mut session);
-        for step in &mut session {
-            teach_nn(&mut nn, &step.state, step.action, step.state.score);
-            examples_processed += 1;
-            // TODO(vbo): BATCH_SIZE should be app, not lib part.
-            if examples_processed % network::BATCH_SIZE == 0 {
-                nn.apply_batch();
-            }
-        }
-
-        if sessions_processed % write_every_n == 0 {
-            if let Some(model_output_path) = model_output_path {
-                nn.write_to_file(&model_output_path);
-                println!("Model saved");
-            }
-        }
-        sessions_processed += 1;
-    }
+    let outputs_id = nn.output_layer();
+    nn.add_layer_dependency(outputs_id, prev_layer);
+    nn.write_to_file(model_output_path);
+    println!("Model saved");
 }
 
 fn score_session(session: &mut Vec<SessionStep>) {
