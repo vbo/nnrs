@@ -376,6 +376,7 @@ pub fn main_snake_train(
     let mut nn = network::Network::load_from_file(model_input_path);
     println!("Starting model loaded from {}", training_data_path);
 
+    //TODO(vbo): training_data_max should be a buffer here, we still need to read all the file.
     let training_data = read_training_data_from_file(training_data_path, training_data_max);
     let mut training_data_indices: Vec<usize> = (0..training_data.len()).collect();
     println!(
@@ -485,13 +486,14 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
         let mut done = false;
         let mut rng = rand::thread_rng();
         let mut visited = HashSet::new();
+        let mut is_loop = false;
         while !done {
             let (input, is_optimal) =
                 get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng);
 
             if !is_optimal {
                 loops += 1;
-                sum_score += state.score;
+                is_loop = true;
                 break;
             }
 
@@ -505,8 +507,9 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
                 sum_score += state.score;
             }
         }
-
-        sessions_processed += 1;
+        if !is_loop {
+            sessions_processed += 1;
+        }
     }
 
     println!(
