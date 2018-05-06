@@ -285,6 +285,7 @@ fn get_next_input_with_strat<R: rand::Rng>(
     state: &GameState,
     random_move_prob: f64,
     rng: &mut R,
+    visualize: bool
 ) -> (SnakeInput, bool) {
     // TODO(vbo): remember prediction
     use self::SnakeInput::*;
@@ -300,6 +301,9 @@ fn get_next_input_with_strat<R: rand::Rng>(
         let outputs = nn.predict(inputs.as_slice());
         assert!(outputs.rows == 1);
         snake_inputs_gains[i] = outputs.mem[0];
+        if visualize {
+            println!("{:?}: {:?}", possible_snake_inputs[i], snake_inputs_gains[i]);
+        }
     }
     let (i, max_gain) = get_max_with_pos(snake_inputs_gains.as_slice());
     let state_hash = get_state_action_hash(&state.map, possible_snake_inputs[i]);
@@ -440,6 +444,7 @@ pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize)
                 &state,
                 RANDOM_MOVE_PROBABILITY,
                 &mut rng,
+                false
             );
             session.push(SessionStep {
                 state: state.clone(),
@@ -489,7 +494,7 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
         let mut is_loop = false;
         while !done {
             let (input, is_optimal) =
-                get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng);
+                get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng, false);
 
             if !is_optimal {
                 loops += 1;
@@ -535,20 +540,20 @@ pub fn main_snake_demo_nn(model_path: &str, log_every_n: usize, visualize: bool)
         let mut rng = rand::thread_rng();
 
         if visualize {
-            print!("\x1B[2J");
+            // print!("\x1B[2J");
             draw_ascii(&mut stdout(), &state.map);
             thread::sleep_ms(SLEEP_INTERVAL_MS);
         }
         let mut visited = HashSet::new();
         while !done {
             let (input, is_optimal) =
-                get_next_input_with_strat(&mut nn, &mut visited, &state, 0.0, &mut rng);
+                get_next_input_with_strat(&mut nn, &mut visited, &state, 0.0, &mut rng, visualize);
             if !is_optimal {
                 panic!("Same state reached.");
             }
             if visualize {
-                print!("\x1B[2J");
-                print!("\x1B[1;1H");
+                // print!("\x1B[2J");
+                // print!("\x1B[1;1H");
                 println!("{:?}", input);
             }
             let StepResult {
@@ -592,7 +597,7 @@ fn generate_dataset() {}
 pub fn main_snake_new_nn(model_output_path: &str) {
     let mut nn;
     println!("Creating new network");
-    let shape = [N_INPUTS, 36, 16, 4, 1];
+    let shape = [N_INPUTS, 36, 1];
     nn = network::Network::new(shape[0], shape[shape.len() - 1]);
     let mut prev_layer = nn.input_layer();
     for i in 1..shape.len() - 1 {

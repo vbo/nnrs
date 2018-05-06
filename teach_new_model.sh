@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-set -e
 
 id=`date "+%Y_%m_%d_%H_%M_%S"`
-iter_num=100
+iter_num=1000
 sessions_per_iter=100000
 examples_per_iter=$((10*$sessions_per_iter))
 num_epochs=100
@@ -11,7 +10,7 @@ rust_execute="time env RUSTFLAGS=-Awarnings RUST_BACKTRACE=1 cargo run --release
 echo "Creating new model ${id}"
 $rust_execute snake_new --model_output "models/${id}.json"
 
-for i in {0..$num_epochs}
+for (( i = 0; i <= $iter_num; i++ ))
 do
     echo "Generating training data ${i}"
     $rust_execute snake_gen \
@@ -28,4 +27,5 @@ do
         --write_every="${examples_per_iter}" \
         --log_every_n="${examples_per_iter}"
     mv "models/${id}t.json" "models/${id}.json"
+    echo "done"
 done

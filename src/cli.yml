@@ -83,6 +83,11 @@ subcommands:
             - visualize:
                 long: visualize
                 help: Whether or not to visualize plays
+            - log_every_n:
+                long: log_every_n
+                required: true
+                default_value: "1000"
+                help: How often to evaluate
     - snake_gen:
         about: Generate training data
         args:
