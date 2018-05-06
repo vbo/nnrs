@@ -10,6 +10,7 @@ rust_execute="time env RUSTFLAGS=-Awarnings RUST_BACKTRACE=1 cargo run --release
 echo "Creating new model ${id}"
 $rust_execute snake_new --model_output "models/${id}.json"
 
+trap "exit" INT
 for (( i = 0; i <= $iter_num; i++ ))
 do
     echo "Generating training data ${i}"
