@@ -16,11 +16,12 @@ use clap::App;
 use clap::AppSettings;
 use clap::ArgMatches;
 
+mod math;
+mod network;
+mod snake_nn;
 mod snake;
 mod mnist;
-mod network;
 mod mnist_data;
-mod math;
 
 fn main() {
     let yaml = load_yaml!("cli.yml");
@@ -43,11 +44,13 @@ fn get_int_arg<T: FromStr>(matches: &ArgMatches, argname: &str) -> Option<T> {
     matches.value_of(argname).unwrap().parse::<T>().ok()
 }
 
-fn execute_mnist_train(matches: &ArgMatches, submatches: &ArgMatches) {}
+fn execute_mnist_train(matches: &ArgMatches, submatches: &ArgMatches) {
+    // TODO: resurrect MNIST
+}
 
 fn execute_snake_new(matches: &ArgMatches, submatches: &ArgMatches) {
     let model_output_path = submatches.value_of("model_output_path").unwrap();
-    snake::main_snake_new_nn(model_output_path);
+    snake_nn::main_snake_new(model_output_path);
 }
 
 fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
@@ -59,7 +62,7 @@ fn execute_snake_train(matches: &ArgMatches, submatches: &ArgMatches) {
     let training_data_max = get_int_arg(submatches, "training_data_max").unwrap();
     let num_epochs = get_int_arg(submatches, "num_epochs").unwrap();
     println!("Executing snake training...");
-    snake::main_snake_train(
+    snake_nn::main_snake_train(
         model_input_path,
         model_output_path,
         training_data_path,
@@ -75,7 +78,7 @@ fn execute_snake_gen(matches: &ArgMatches, submatches: &ArgMatches) {
     let training_data_path = submatches.value_of("training_data_path").unwrap();
     let save_n = get_int_arg(submatches, "save_n").unwrap();
     println!("Executing snake gen...");
-    snake::main_snake_gen(model_input_path, training_data_path, save_n);
+    snake_nn::main_snake_gen(model_input_path, training_data_path, save_n);
 }
 
 fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {
@@ -83,5 +86,5 @@ fn execute_snake_demo(matches: &ArgMatches, submatches: &ArgMatches) {
     let visualize = submatches.is_present("visualize");
     let games_to_play = get_int_arg(submatches, "games_to_play").unwrap();
     println!("Executing snake demo...");
-    snake::main_snake_demo_nn(model_input_path, games_to_play, visualize);
+    snake_nn::main_snake_demo(model_input_path, games_to_play, visualize);
 }

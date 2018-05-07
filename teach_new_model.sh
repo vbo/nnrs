@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 set -e
 
-id=`date "+%Y_%m_%d_%H_%M_%S"`
+input_id=$1
 iter_num=100
-sessions_per_iter=100000
+sessions_per_iter=1000
 examples_per_iter=$((10*$sessions_per_iter))
 num_epochs=100
 rust_execute="time env RUSTFLAGS=-Awarnings RUST_BACKTRACE=1 cargo run --release --"
 
-echo "Creating new model ${id}"
-$rust_execute snake_new --model_output "models/${id}.json"
+if [ -z "$input_id" ]
+then
+    id=`date "+%Y_%m_%d_%H_%M_%S"`
+    echo "Creating new model ${id}"
+    $rust_execute snake_new --model_output "models/${id}.json"
+else
+    id="$input_id"
+fi
 
 for i in {0..$num_epochs}
 do
