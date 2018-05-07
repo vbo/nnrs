@@ -37,7 +37,7 @@ pub struct SessionStep {
 // - to predict the next state
 // - to evaluate the state
 // This way we get more information which layer is failing us.
-pub fn main_snake_train(
+pub fn snake_train(
     model_input_path: &str,
     model_output_path: &str,
     training_data_path: &str,
@@ -89,7 +89,7 @@ pub fn main_snake_train(
     }
 }
 
-pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
+pub fn snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
     let mut training_data_file = File::create(&training_data_path).unwrap();
     let mut nn = network::Network::load_from_file(model_path);
     println!("Model extracted from file...");
@@ -147,7 +147,7 @@ pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize)
     );
 }
 
-pub fn main_snake_demo(model_path: &str, games_to_play: usize, visualize: bool) {
+pub fn snake_demo(model_path: &str, games_to_play: usize, visualize: bool) {
     let mut nn = network::Network::load_from_file(model_path);
     println!("Model extracted from file...");
     let mut sessions_processed = 0;
@@ -205,7 +205,7 @@ pub fn main_snake_demo(model_path: &str, games_to_play: usize, visualize: bool) 
     );
 }
 
-pub fn main_snake_new(model_output_path: &str) {
+pub fn snake_new(model_output_path: &str) {
     let mut nn;
     println!("Creating new network");
     let shape = [N_INPUTS, 20, 1];
@@ -383,8 +383,12 @@ fn score_session(session: &mut Vec<SessionStep>) {
     // This must be done as a last step to avoid passing positive values to previous score
     // for non-apple moves.
     for step in session {
-        step.state.score = (step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST);
+        step.state.score = round_2dec((step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST));
     }
+}
+
+fn round_2dec(v: f64) -> f64 {
+    return (v*100.0).round() as f64 / 100.0;
 }
 
 fn get_max_score() -> f64 {
