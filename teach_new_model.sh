@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 input_id=$1
-iter_num=100
+iter_num=1000
 sessions_per_iter=10000
-examples_per_iter=$((64*$sessions_per_iter))
+examples_per_iter=$((10*$sessions_per_iter))
 num_epochs=100
 rust_execute="time env RUSTFLAGS=-Awarnings RUST_BACKTRACE=1 cargo run --release --"
 
@@ -16,6 +16,8 @@ else
     id="$input_id"
 fi
 
+training_data="data/snake_t_${id}.dat"
+
 trap "exit" INT
 for (( i = 0; i <= $iter_num; i++ ))
 do
@@ -24,10 +26,13 @@ do
             --model_input "models/${id}.json" \
             --training_data "data/snake_t_${id}.dat" \
             --save="${sessions_per_iter}"
+    echo "Lines before dedup: `cat ${training_data} | wc -l`"
+    sort -u "${training_data}" -o "${training_data}"
+    echo "Lines after dedup: `cat ${training_data} | wc -l`"
     echo "Teaching model"
     $rust_execute snake_train \
         --model_input "models/${id}.json" \
-        --training_data "data/snake_t_${id}.dat" \
+        --training_data "${training_data}" \
         --model_output "models/${id}t.json" \
         --training_data_max="${examples_per_iter}" \
         --num_epochs="${num_epochs}" \

@@ -18,8 +18,8 @@ use math::*;
 const SLEEP_INTERVAL_MS: u32 = 200;
 const FORGET_RATE: f64 = 0.2;
 const GAME_OVER_COST: f64 = -0.5;
-const MAP_WIDTH: usize = 8;
-const MAP_HEIGHT: usize = 8;
+const MAP_WIDTH: usize = 3;
+const MAP_HEIGHT: usize = 3;
 const N_INPUTS: usize = MAP_WIDTH * MAP_HEIGHT * SNAKE_TILE_SIZE + SNAKE_INPUT_SIZE;
 const RANDOM_MOVE_PROBABILITY: f64 = 0.2;
 
@@ -113,6 +113,7 @@ pub fn main_snake_gen(model_path: &str, training_data_path: &str, save_n: usize)
                 &state,
                 RANDOM_MOVE_PROBABILITY,
                 &mut rng,
+                false,
             );
             session.push(SessionStep {
                 state: state.clone(),
@@ -161,20 +162,24 @@ pub fn main_snake_demo(model_path: &str, games_to_play: usize, visualize: bool) 
         let mut rng = rand::thread_rng();
 
         if visualize {
-            print!("\x1B[2J");
+            if MAP_WIDTH > 3 {
+                print!("\x1B[2J");
+            }
             draw_ascii(&mut stdout(), &state.map);
             thread::sleep_ms(SLEEP_INTERVAL_MS);
         }
         let mut visited = HashSet::new();
         while !done {
             let (input, is_optimal) =
-                get_next_input_with_strat(&mut nn, &mut visited, &state, 0.0, &mut rng);
+                get_next_input_with_strat(&mut nn, &mut visited, &state, 0.0, &mut rng, visualize);
             if !is_optimal {
                 panic!("Same state reached.");
             }
             if visualize {
-                print!("\x1B[2J");
-                print!("\x1B[1;1H");
+                if MAP_WIDTH > 3 {
+                    print!("\x1B[2J");
+                    print!("\x1B[1;1H");
+                }
                 println!("{:?}", input);
             }
             let StepResult {
@@ -203,7 +208,7 @@ pub fn main_snake_demo(model_path: &str, games_to_play: usize, visualize: bool) 
 pub fn main_snake_new(model_output_path: &str) {
     let mut nn;
     println!("Creating new network");
-    let shape = [N_INPUTS, 512, 128, 1];
+    let shape = [N_INPUTS, 20, 1];
     nn = network::Network::new(shape[0], shape[shape.len() - 1]);
     let mut prev_layer = nn.input_layer();
     for i in 1..shape.len() - 1 {
@@ -232,7 +237,7 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
         let mut visited = HashSet::new();
         while !done {
             let (input, is_optimal) =
-                get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng);
+                get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng, false);
 
             if !is_optimal {
                 loops += 1;
@@ -266,6 +271,7 @@ fn get_next_input_with_strat<R: rand::Rng>(
     state: &GameState,
     random_move_prob: f64,
     rng: &mut R,
+    visualize: bool,
 ) -> (SnakeInput, bool) {
     // TODO(vbo): remember prediction
     use self::SnakeInput::*;
@@ -281,6 +287,9 @@ fn get_next_input_with_strat<R: rand::Rng>(
         let outputs = nn.predict(inputs.as_slice());
         assert!(outputs.rows == 1);
         snake_inputs_gains[i] = outputs.mem[0];
+        if visualize {
+            println!("{:?}: {:?}", possible_snake_inputs[i], snake_inputs_gains[i])
+        }
     }
     let (i, max_gain) = get_max_with_pos(snake_inputs_gains.as_slice());
     let state_hash = get_state_action_hash(&state.map, possible_snake_inputs[i]);
