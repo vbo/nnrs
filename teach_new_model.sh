@@ -1,7 +1,9 @@
+#!/usr/bin/env bash
+
 input_id=$1
 iter_num=100
-sessions_per_iter=1000
-examples_per_iter=$((10*$sessions_per_iter))
+sessions_per_iter=10000
+examples_per_iter=$((64*$sessions_per_iter))
 num_epochs=100
 rust_execute="time env RUSTFLAGS=-Awarnings RUST_BACKTRACE=1 cargo run --release --"
 
