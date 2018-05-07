@@ -1,6 +1,3 @@
-#!/usr/bin/env bash
-set -e
-
 input_id=$1
 iter_num=100
 sessions_per_iter=1000
@@ -17,7 +14,8 @@ else
     id="$input_id"
 fi
 
-for i in {0..$num_epochs}
+trap "exit" INT
+for (( i = 0; i <= $iter_num; i++ ))
 do
     echo "Generating training data ${i}"
     $rust_execute snake_gen \
@@ -34,4 +32,5 @@ do
         --write_every="${examples_per_iter}" \
         --log_every_n="${examples_per_iter}"
     mv "models/${id}t.json" "models/${id}.json"
+    echo "done"
 done
