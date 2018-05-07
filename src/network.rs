@@ -313,7 +313,14 @@ impl Network {
 
     pub fn load_from_file(path: &str) -> Self {
         let file = File::open(path).unwrap();
-        serde_json::from_reader(&file).unwrap()
+        let mut nn: Self = serde_json::from_reader(&file).unwrap();
+        for layer in &mut nn.layers {
+            layer.bias_batch_pd = 0.0;
+            for dependency in &mut layer.dependencies {
+                dependency.weights_batch_pd.fill_with(0.0);
+            }
+        }
+        return nn;
     }
 }
 

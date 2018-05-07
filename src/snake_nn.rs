@@ -191,7 +191,7 @@ pub fn snake_demo(model_path: &str, games_to_play: usize, visualize: bool) {
             if done {
                 avg_score += state.score;
             }
-            if visualize {
+            if visualize && !done {
                 draw_ascii(&mut stdout(), &state.map);
                 thread::sleep_ms(SLEEP_INTERVAL_MS);
             }
@@ -208,7 +208,7 @@ pub fn snake_demo(model_path: &str, games_to_play: usize, visualize: bool) {
 pub fn snake_new(model_output_path: &str) {
     let mut nn;
     println!("Creating new network");
-    let shape = [N_INPUTS, 20, 1];
+    let shape = [N_INPUTS, 36, 1];
     nn = network::Network::new(shape[0], shape[shape.len() - 1]);
     let mut prev_layer = nn.input_layer();
     for i in 1..shape.len() - 1 {
