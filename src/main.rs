@@ -16,6 +16,7 @@ use clap::App;
 use clap::AppSettings;
 use clap::ArgMatches;
 
+mod timing;
 mod math;
 mod network;
 mod snake_nn;

@@ -5,9 +5,7 @@ use rand::distributions::{IndependentSample, Range};
 use serde_json;
 use rand;
 
-
 pub const SNAKE_FRUIT_GAIN: f64 = 1.0;
-
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameState {
@@ -74,10 +72,18 @@ impl SnakeMap {
         }
     }
 
-    pub fn width(&self) -> usize { self.width }
-    pub fn height(&self) -> usize { self.height }
-    pub fn body(&self) -> &[(usize, usize)] { self.body.as_slice() }
-    pub fn tiles(&self) -> &[SnakeTile] { self.tiles.as_slice() }
+    pub fn width(&self) -> usize {
+        self.width
+    }
+    pub fn height(&self) -> usize {
+        self.height
+    }
+    pub fn body(&self) -> &[(usize, usize)] {
+        self.body.as_slice()
+    }
+    pub fn tiles(&self) -> &[SnakeTile] {
+        self.tiles.as_slice()
+    }
 
     pub fn random(width: usize, height: usize) -> Self {
         let mut map = SnakeMap::new(width, height);

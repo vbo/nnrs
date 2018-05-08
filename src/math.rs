@@ -331,4 +331,3 @@ impl Vector {
         return (max_i, max);
     }
 }
-

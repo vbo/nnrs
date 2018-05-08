@@ -14,6 +14,7 @@ use rand::distributions::{IndependentSample, Range};
 use snake::*;
 use network;
 use math::*;
+use timing::Timing;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 const FORGET_RATE: f64 = 0.2;
@@ -59,31 +60,43 @@ pub fn snake_train(
 
     let mut examples_processed = 0;
     let mut random_number_generator = rand::thread_rng();
+    let mut timing = Timing::new();
     for _ in 1..num_epochs + 1 {
         random_number_generator.shuffle(&mut training_data_indices.as_mut_slice());
         for training_data_index in &training_data_indices {
             let sample_step = &training_data[*training_data_index];
 
+            timing.start("teach_nn");
             teach_nn(
                 &mut nn,
                 &sample_step.state,
                 sample_step.action,
                 sample_step.state.score,
             );
+            timing.stop("teach_nn");
+
             examples_processed += 1;
             // TODO(vbo): BATCH_SIZE should be app, not lib part.
             if examples_processed % network::BATCH_SIZE == 0 {
+                timing.start("apply_batch");
                 nn.apply_batch();
+                timing.stop("apply_batch");
             }
 
             if examples_processed % write_every_n == 0 {
+                timing.start("write_to_file");
                 nn.write_to_file(&model_output_path);
+                timing.stop("write_to_file");
                 println!("Model saved");
             }
 
             if examples_processed % log_every_n == 0 {
                 println!("Examples processed: {}", examples_processed);
+                timing.start("evaluate_on_random_games");
                 evaluate_on_random_games(&mut nn, 1000);
+                timing.stop("evaluate_on_random_games");
+
+                timing.dump();
             }
         }
     }
@@ -218,6 +231,8 @@ pub fn snake_new(model_output_path: &str) {
     }
     let outputs_id = nn.output_layer();
     nn.add_layer_dependency(outputs_id, prev_layer);
+    let inp_layer = nn.input_layer();
+    nn.add_layer_dependency(outputs_id, inp_layer);
     nn.write_to_file(model_output_path);
     println!("Model saved");
 }
@@ -288,7 +303,10 @@ fn get_next_input_with_strat<R: rand::Rng>(
         assert!(outputs.rows == 1);
         snake_inputs_gains[i] = outputs.mem[0];
         if visualize {
-            println!("{:?}: {:?}", possible_snake_inputs[i], snake_inputs_gains[i])
+            println!(
+                "{:?}: {:?}",
+                possible_snake_inputs[i], snake_inputs_gains[i]
+            )
         }
     }
     let (i, max_gain) = get_max_with_pos(snake_inputs_gains.as_slice());
@@ -374,7 +392,7 @@ fn score_session(session: &mut Vec<SessionStep>) {
         // without added value of future benefits - they are not trustworthy.
         // TODO(vbo) uncomment or delete the condition below
         //if is_next_action_optimal {
-            step.state.score = step.state.score + FORGET_RATE * next_score;
+        step.state.score = step.state.score + FORGET_RATE * next_score;
         //}
     }
 
@@ -383,12 +401,13 @@ fn score_session(session: &mut Vec<SessionStep>) {
     // This must be done as a last step to avoid passing positive values to previous score
     // for non-apple moves.
     for step in session {
-        step.state.score = round_2dec((step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST));
+        step.state.score =
+            round_2dec((step.state.score - GAME_OVER_COST) / (max_score - GAME_OVER_COST));
     }
 }
 
 fn round_2dec(v: f64) -> f64 {
-    return (v*100.0).round() as f64 / 100.0;
+    return (v * 100.0).round() as f64 / 100.0;
 }
 
 fn get_max_score() -> f64 {

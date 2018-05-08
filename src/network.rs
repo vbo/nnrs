@@ -6,7 +6,7 @@ use serde_json;
 use math::Matrix;
 use math::Vector;
 
-const LEARNING_RATE: f64 = 0.1;
+const LEARNING_RATE: f64 = 0.7;
 pub const BATCH_SIZE: usize = 1000;
 
 #[derive(Serialize, Deserialize)]
