@@ -43,9 +43,20 @@ impl Timing {
         }
     }
 
+    pub fn elapsed(&self, name: &str) -> time::Duration {
+        match self.sections.get(name) {
+            Some(timer) => timer.duration,
+            None => time::Duration::from_millis(0),
+        }
+    }
+
     pub fn dump(&self) {
         println!("{}", self);
     }
+}
+
+pub fn duration_as_total_nanos(duration: &time::Duration) -> u64 {
+    duration.as_secs() * 1_000_000_000 + duration.subsec_nanos() as u64
 }
 
 impl fmt::Display for Timing {
