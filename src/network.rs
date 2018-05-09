@@ -6,10 +6,10 @@ use serde_json;
 use math::Matrix;
 use math::Vector;
 
-const LEARNING_RATE: f64 = 0.7;
+const LEARNING_RATE: f64 = 0.1;
 pub const BATCH_SIZE: usize = 1000;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Network {
     layers: Vec<Layer>,
     input_layer: LayerID,
@@ -24,7 +24,7 @@ impl fmt::Display for LayerID {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 enum LayerKind {
     Input,
     Output,
@@ -324,7 +324,7 @@ impl Network {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Layer {
     kind: LayerKind,
     dependencies: Vec<LayerDependency>,
@@ -349,7 +349,7 @@ impl Layer {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct LayerDependency {
     id: LayerID,
     weights: Matrix,

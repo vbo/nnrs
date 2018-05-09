@@ -1,3 +1,4 @@
+#![feature(test)]
 use std::io::BufReader;
 use std::io::BufRead;
 use std::io::prelude::*;
@@ -15,6 +16,9 @@ use snake::*;
 use network;
 use math::*;
 use timing::Timing;
+use timing::duration_as_total_nanos;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 const FORGET_RATE: f64 = 0.2;
@@ -97,67 +101,57 @@ pub fn snake_train(
                 timing.stop("evaluate_on_random_games");
 
                 timing.dump();
+                println!(
+                    "teach_nn per example: {}ns",
+                    duration_as_total_nanos(&timing.elapsed("teach_nn"))
+                        / examples_processed as u64
+                );
             }
         }
     }
 }
 
 pub fn snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
-    let mut training_data_file = File::create(&training_data_path).unwrap();
     let mut nn = network::Network::load_from_file(model_path);
     println!("Model extracted from file...");
-    let mut sessions_processed = 0;
-    let mut avg_score: f64 = 0.0;
-    while sessions_processed < save_n {
-        let mut state = GameState {
-            map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
-            score: 0.0,
-        };
 
-        let mut done = false;
-        let mut rng = rand::thread_rng();
+    let mut timing = Timing::new();
+    timing.start("snake_gen");
+    let mut join_handles = Vec::new();
+    let cpus = 7;
+    for thread_no in 0..cpus {
+        let mut thread_nn = nn.clone();
+        let thread_out_path = training_data_path.to_owned();
+        let jh = thread::spawn(move || {
+            println!("Thread {}", thread_no);
+            let mut training_data_file =
+                File::create(&format!("{}_{}", thread_out_path, thread_no)).unwrap();
+            let mut sessions_processed = 0usize;
+            while sessions_processed < save_n / cpus {
+                let mut state = GameState {
+                    map: SnakeMap::random(MAP_WIDTH, MAP_HEIGHT),
+                    score: 0.0,
+                };
 
-        let mut visited = HashSet::new();
-        let mut session = Vec::new();
-        while !done {
-            let (input, is_optimal) = get_next_input_with_strat(
-                &mut nn,
-                &mut visited,
-                &state,
-                RANDOM_MOVE_PROBABILITY,
-                &mut rng,
-                false,
-            );
-            session.push(SessionStep {
-                state: state.clone(),
-                action: input,
-                is_optimal: is_optimal,
-            });
-
-            let StepResult {
-                state: new_state,
-                game_over: game_over,
-            } = snake_step(state, input);
-            state = new_state;
-            done = game_over;
-            if done {
-                avg_score += state.score;
+                let mut session = play_random_game(&mut thread_nn, state);
+                score_session(&mut session);
+                for step in &session {
+                    serde_json::to_writer(&training_data_file, step).unwrap();
+                    write!(training_data_file, "\n");
+                }
+                sessions_processed += 1;
             }
-        }
+        });
 
-        score_session(&mut session);
-        for step in &session {
-            serde_json::to_writer(&training_data_file, step).unwrap();
-            write!(training_data_file, "\n");
-        }
-
-        sessions_processed += 1;
+        join_handles.push(jh);
     }
-    println!(
-        "Avg score: {}, games played {}",
-        avg_score / sessions_processed as f64,
-        sessions_processed
-    );
+
+    for jh in join_handles {
+        jh.join();
+    }
+
+    timing.stop("snake_gen");
+    timing.dump();
 }
 
 pub fn snake_demo(model_path: &str, games_to_play: usize, visualize: bool) {
@@ -235,6 +229,39 @@ pub fn snake_new(model_output_path: &str) {
     nn.add_layer_dependency(outputs_id, inp_layer);
     nn.write_to_file(model_output_path);
     println!("Model saved");
+}
+
+fn play_random_game(nn: &mut network::Network, mut state: GameState) -> Vec<SessionStep> {
+    let mut done = false;
+    let mut rng = rand::thread_rng();
+
+    let mut visited = HashSet::new();
+    let mut session = Vec::new();
+    while !done {
+        let (input, is_optimal) = get_next_input_with_strat(
+            nn,
+            &mut visited,
+            &state,
+            RANDOM_MOVE_PROBABILITY,
+            &mut rng,
+            false,
+        );
+
+        session.push(SessionStep {
+            state: state.clone(),
+            action: input,
+            is_optimal: is_optimal,
+        });
+
+        let StepResult {
+            state: new_state,
+            game_over: game_over,
+        } = snake_step(state, input);
+        state = new_state;
+        done = game_over;
+    }
+
+    return session;
 }
 
 fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
@@ -446,4 +473,15 @@ fn convert_state_to_network_inputs(state: &GameState) -> Vec<f64> {
     }
 
     return inputs;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[bench]
+    fn bench_teach_nn(b: &mut Bencher) {
+        b.iter(|| 2 + 2);
+    }
 }

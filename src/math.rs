@@ -2,7 +2,7 @@ use rand;
 use rand::distributions::{IndependentSample, Range};
 use std::fmt;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Matrix {
     pub mem: Vec<f64>,
     pub cols: usize,
