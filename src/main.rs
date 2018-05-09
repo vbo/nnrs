@@ -1,5 +1,8 @@
+//#![feature(test)]
+
 use std::str::FromStr;
 
+//extern crate test;
 extern crate rand;
 extern crate serde;
 
@@ -46,7 +49,18 @@ fn get_int_arg<T: FromStr>(matches: &ArgMatches, argname: &str) -> Option<T> {
 }
 
 fn execute_mnist_train(matches: &ArgMatches, submatches: &ArgMatches) {
-    // TODO: resurrect MNIST
+    let model_input_path = submatches.value_of("model_input_path").unwrap();
+    let model_output_path = submatches.value_of("model_output_path").unwrap();
+    let write_every_n = get_int_arg(submatches, "write_every_n").unwrap();
+    let log_every_n = get_int_arg(submatches, "log_every_n").unwrap();
+    let test_every_n = get_int_arg(submatches, "test_every_n").unwrap();
+    mnist::main_mnist(
+        model_input_path,
+        model_output_path,
+        write_every_n,
+        test_every_n,
+        log_every_n,
+    );
 }
 
 fn execute_snake_new(matches: &ArgMatches, submatches: &ArgMatches) {

@@ -11,15 +11,21 @@ subcommands:
                 long: model_input
                 takes_value: true
                 help: Path to read a model from
+                default_value: ""
             - model_output_path:
                 short: o
                 long: model_output
                 takes_value: true
                 help: Path to write a model to
+                default_value: ""
             - write_every_n:
                 long: write_every
-                default_value: "50000"
+                default_value: "5000"
                 help: Will write a model every N iterations
+            - log_every_n:
+                long: log_every_n
+                default_value: "10000"
+                help: Print useful information every n examples
             - test_every_n:
                 long: test_every
                 default_value: "50000"
