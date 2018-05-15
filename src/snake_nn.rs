@@ -100,15 +100,14 @@ pub fn snake_train(
                 evaluate_on_random_games(&mut nn, 1000);
                 timing.stop("evaluate_on_random_games");
 
-                timing.dump();
-                println!(
-                    "teach_nn per example: {}ns",
-                    duration_as_total_nanos(&timing.elapsed("teach_nn"))
-                        / examples_processed as u64
-                );
+                timing.dump_divided(examples_processed);
             }
         }
     }
+
+    timing.dump_divided(examples_processed);
+    nn.write_to_file(&model_output_path);
+    println!("Final model saved");
 }
 
 pub fn snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
