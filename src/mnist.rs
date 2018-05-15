@@ -1,7 +1,7 @@
-use std::fmt;
-use std::time;
 use rand;
 use rand::Rng;
+use std::fmt;
+use std::time;
 
 use network;
 use network::Network;
@@ -12,6 +12,9 @@ use mnist_data::Dataset;
 use math;
 use math::Matrix;
 use math::Vector;
+
+use timing;
+use timing::Timing;
 
 const N_INPUTS: usize = 28 * 28;
 const N_L1: usize = 16;
@@ -59,19 +62,23 @@ pub fn main_mnist(
     let mut total_error: f64 = 0.0;
     let mut total_elapsed_secs: f64 = 0.0;
     let mut overall_stopwatch = time::Instant::now();
+    let mut timing = Timing::new();
     for _ in 1..NUM_EPOCHS + 1 {
         // Randomize example order
         random_number_generator.shuffle(&mut training_data.example_indices.as_mut_slice());
 
         let mut current_examples_cursor = 0usize;
         while current_examples_cursor < training_data.examples_count {
+            timing.start("overall");
             let (input_data, label_data) = training_data.slices_for_cursor(current_examples_cursor);
             true_outputs.copy_from_slice(label_data);
 
-            let mut stopwatch = time::Instant::now();
+            timing.start("overall.predict");
             let outputs = nn.predict(input_data).clone();
+            timing.stop("overall.predict");
+            timing.start("overall.backward_propagation");
             nn.backward_propagation(&true_outputs);
-            total_elapsed_secs += duration_as_total_secs(&stopwatch.elapsed());
+            timing.stop("overall.backward_propagation");
 
             // Update accuracy metrics
             true_outputs.sub(&outputs, &mut error);
@@ -83,8 +90,12 @@ pub fn main_mnist(
             }
 
             if (current_examples_cursor + 1) % network::BATCH_SIZE == 0 {
+                timing.start("overall.apply_batch");
                 nn.apply_batch();
+                timing.stop("overall.apply_batch");
             }
+
+            timing.stop("overall");
 
             if (examples_processed + 1) % log_every_n == 0 {
                 println!(
@@ -93,15 +104,7 @@ pub fn main_mnist(
                     total_error / log_every_n as f64
                 );
                 println!("hits {}%", (hits as f64) * 100.0 / (log_every_n as f64));
-                println!(
-                    "time/example: {:.4}ms",
-                    1000.0 * total_elapsed_secs / log_every_n as f64
-                );
-                println!(
-                    "total time per {}k: {:.4}s",
-                    log_every_n / 1000,
-                    duration_as_total_secs(&overall_stopwatch.elapsed())
-                );
+                timing.dump_divided(examples_processed);
                 total_error = 0.0;
                 hits = 0;
                 total_elapsed_secs = 0.0;
