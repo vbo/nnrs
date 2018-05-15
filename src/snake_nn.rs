@@ -1,24 +1,24 @@
 #![feature(test)]
-use std::io::BufReader;
-use std::io::BufRead;
-use std::io::prelude::*;
-use std::io::stdout;
-use std::thread;
-use std::collections::HashSet;
+use math::*;
+use network;
+use rand;
+use rand::distributions::{IndependentSample, Range};
+use rand::Rng;
+use serde_json;
+use snake::*;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use rand;
-use serde_json;
-use rand::Rng;
-use rand::distributions::{IndependentSample, Range};
-use snake::*;
-use network;
-use math::*;
-use timing::Timing;
-use timing::duration_as_total_nanos;
-use std::sync::mpsc::{Receiver, Sender};
+use std::io::prelude::*;
+use std::io::stdout;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread;
+use timing::duration_as_total_nanos;
+use timing::Timing;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 const FORGET_RATE: f64 = 0.2;
@@ -475,6 +475,7 @@ fn convert_state_to_network_inputs(state: &GameState) -> Vec<f64> {
     return inputs;
 }
 
+#[cfg(nightly)]
 #[cfg(test)]
 mod tests {
     use super::*;

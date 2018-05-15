@@ -1,8 +1,8 @@
 extern crate byteorder;
 
+use self::byteorder::{BigEndian, ByteOrder};
 use std::fs::File;
 use std::io::Read;
-use self::byteorder::{BigEndian, ByteOrder};
 
 pub struct Dataset {
     pub input_mem: Vec<f64>,
@@ -30,10 +30,7 @@ impl Dataset {
 }
 
 pub fn load_mnist_testing() -> Dataset {
-    load_mnist(
-        "data/t10k-images-idx3-ubyte",
-        "data/t10k-labels-idx1-ubyte",
-    )
+    load_mnist("data/t10k-images-idx3-ubyte", "data/t10k-labels-idx1-ubyte")
 }
 
 pub fn load_mnist_training() -> Dataset {

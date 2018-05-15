@@ -1,9 +1,9 @@
-use std::io::prelude::*;
-use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
+use rand::Rng;
+use std::io::prelude::*;
 
-use serde_json;
 use rand;
+use serde_json;
 
 pub const SNAKE_FRUIT_GAIN: f64 = 1.0;
 

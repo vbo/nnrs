@@ -19,13 +19,13 @@ use clap::App;
 use clap::AppSettings;
 use clap::ArgMatches;
 
-mod timing;
 mod math;
-mod network;
-mod snake_nn;
-mod snake;
 mod mnist;
 mod mnist_data;
+mod network;
+mod snake;
+mod snake_nn;
+mod timing;
 
 fn main() {
     let yaml = load_yaml!("cli.yml");
