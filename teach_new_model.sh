@@ -31,7 +31,7 @@ do
             --model_input "models/${id}.json" \
             --training_data "data/snake_t_${id}.dat" \
             --save="${sessions_per_iter}"
-    cat "data/snake_t_${id}.dat" >> "${training_data}"
+    cat "data/snake_t_${id}.dat_"* >> "${training_data}"
     echo "Lines before dedup: `cat ${training_data} | wc -l`"
     sort -u "${training_data}" -o "${training_data}"
     lines=$(cat "${training_data}" | wc -l)
