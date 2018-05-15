@@ -52,8 +52,8 @@ impl Matrix {
     }
 
     pub fn fill_with(&mut self, val: f64) {
-        for i in 0..self.rows * self.cols {
-            self.mem[i] = val;
+        for e in self.mem.iter_mut() {
+            *e = val;
         }
     }
 
@@ -102,7 +102,10 @@ impl Matrix {
         for row in 0..res.rows {
             let mat_row_start = row * self.cols;
             for col in 0..self.cols {
-                res.mem[row] += self.mem[mat_row_start + col] * vec.mem[col];
+                unsafe {
+                    *res.mem.get_unchecked_mut(row) +=
+                        self.mem.get_unchecked(mat_row_start + col) * vec.mem.get_unchecked(col);
+                }
             }
         }
     }
@@ -119,8 +122,8 @@ impl Matrix {
             mat.cols
         );
 
-        for i in 0..self.rows * self.cols {
-            self.mem[i] -= mat.mem[i];
+        for (left, right) in self.mem.iter_mut().zip(mat.mem.iter()) {
+            *left -= right;
         }
     }
 
@@ -135,8 +138,8 @@ impl Matrix {
             mat.cols
         );
 
-        for i in 0..self.rows * self.cols {
-            self.mem[i] += mat.mem[i];
+        for (left, right) in self.mem.iter_mut().zip(mat.mem.iter()) {
+            *left += right;
         }
     }
 
@@ -144,8 +147,8 @@ impl Matrix {
     where
         F: Fn(f64) -> f64,
     {
-        for i in 0..self.rows * self.cols {
-            self.mem[i] = f(self.mem[i]);
+        for e in self.mem.iter_mut() {
+            *e = f(*e);
         }
     }
 
@@ -170,7 +173,6 @@ impl Matrix {
         }
     }
 
-    #[no_mangle]
     pub fn transposed_add_dot_vec(&self, vec: &Vector, res: &mut Vector) {
         assert!(
             self.cols == res.rows && self.rows == vec.rows,
@@ -185,7 +187,10 @@ impl Matrix {
         for mat_row in 0..self.rows {
             let mat_row_start = mat_row * self.cols;
             for row in 0..res.rows {
-                res.mem[row] += self.mem[mat_row_start + row] * vec.mem[mat_row];
+                unsafe {
+                    *res.mem.get_unchecked_mut(row) +=
+                        self.mem.get_unchecked(mat_row_start + row) * vec.mem.get_unchecked(mat_row)
+                };
             }
         }
     }
