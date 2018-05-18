@@ -1,0 +1,37 @@
+
+
+Thread Pool for trainer
+
+Job config:
+    - Activations, temporaries ...
+
+Job input:
+    - Shared TO slice of trainng data -> release+take back after epoch
+    - Shared RO ref to NetParams -> release+take back after BATCH_SIZE/cpus
+
+Job operation:
+    - do BATCH_SIZE/cpus times: backward, forward, PD
+    - release NetParams before outputting
+    - send output to main thread + wait for return
+
+Job output:
+    - PD for trainign data batch
+
+
+Main thread:
+    - for each EPOCH:
+        shuffle training data
+        divide training data by cpus
+        send slices to threads
+        for each BATCH:
+            send NetParams to threads
+            wait for output stream:
+                aggregate outputs to temporary
+                4 times
+            if netparams.dropped:
+                add temporary to NetParams
+        wait for training_data from threads:
+            4 times
+        if training_data.dropped:
+            reown training data
+

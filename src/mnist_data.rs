@@ -7,16 +7,13 @@ use self::byteorder::{BigEndian, ByteOrder};
 pub struct Dataset {
     pub input_mem: Vec<f64>,
     pub label_mem: Vec<f64>,
-    pub example_indices: Vec<usize>,
     pub examples_count: usize,
     pub input_size: usize,
     pub label_size: usize,
 }
 
 impl Dataset {
-    pub fn slices_for_cursor(&self, cursor: usize) -> (&[f64], &[f64]) {
-        let current_example_index = self.example_indices[cursor];
-
+    pub fn slices_for_cursor(&self, current_example_index: usize) -> (&[f64], &[f64]) {
         let input_data_offset = current_example_index * self.input_size;
         let input_data_end = input_data_offset + self.input_size;
         let input_data = &self.input_mem[input_data_offset..input_data_end];
@@ -107,7 +104,6 @@ pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> Dataset {
     let res = Dataset {
         input_mem: images_data,
         label_mem: labels_data,
-        example_indices: (0usize..images_count).collect(),
         examples_count: images_count,
         input_size: input_size,
         label_size: label_size,

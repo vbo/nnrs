@@ -40,6 +40,7 @@ impl NetworkParameters {
     pub fn output_layer(&self) -> LayerID {
         self.output_layer
     }
+
     fn get_layer_mut(&mut self, id: LayerID) -> &mut Layer {
         &mut self.layers[id.0]
     }
@@ -377,6 +378,11 @@ impl Network {
             predictor: NetworkPredictor::for_parameters(&parameters),
             parameters: parameters,
         }
+    }
+
+    pub fn as_parts(self) -> (NetworkParameters, NetworkPredictor, NetworkTrainer) {
+        let Self { parameters, predictor, trainer } = self;
+        ( parameters, predictor, trainer )
     }
 
     pub fn input_layer(&self) -> LayerID {
