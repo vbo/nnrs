@@ -319,7 +319,7 @@ impl Vector {
         }
     }
 
-    pub fn add_to_me(&mut self, v: &Vector) {
+    pub fn add(&mut self, v: &Vector) {
         assert!(
             self.rows == v.rows,
             "Invalid dimensions for add: {}x1 + {}x1",

@@ -153,6 +153,16 @@ impl NetworkTrainer {
         }
     }
 
+    pub fn aggregate(&mut self, other: &Self) {
+        assert!(other.layers.len() == self.layers.len(), "Invalid trainer for aggregation.");
+        for (other_layer, our_layer) in other.layers.iter().zip(self.layers.iter_mut()) {
+            our_layer.bias_batch_pd += other_layer.bias_batch_pd;
+            for (other_dep, our_dep) in other_layer.dependencies.iter().zip(our_layer.dependencies.iter_mut()) {
+                our_dep.weights_batch_pd.add(&other_dep.weights_batch_pd);
+            }
+        }
+    }
+
     /// Weights adjustment from info accumulated during backward propagation calls.
     pub fn apply_batch(&mut self, parameters: &mut NetworkParameters) {
         for (layer, training_layer) in parameters.layers.iter_mut().zip(self.layers.iter_mut()) {
@@ -170,6 +180,15 @@ impl NetworkTrainer {
                     .weights
                     .add(&training_dependency.weights_batch_pd);
                 training_dependency.weights_batch_pd.fill_with(0.0);
+            }
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for layer in self.layers.iter_mut() {
+            layer.bias_batch_pd = 0.0;
+            for dep in layer.dependencies.iter_mut() {
+                dep.weights_batch_pd.fill_with(0.0);
             }
         }
     }

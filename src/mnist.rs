@@ -2,12 +2,10 @@ use std::fmt;
 use std::time;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Sender, Receiver, channel};
 
 use rand;
 use rand::Rng;
-use std::fmt;
-use std::time;
 
 use network;
 use network::{Network, NetworkParameters, NetworkPredictor, NetworkTrainer};
@@ -54,33 +52,49 @@ pub fn main_mnist(
         nn.add_layer_dependency(l1_id, inputs_id);
     }
 
-    let training_data = Arc::new(mnist_data::load_mnist_training());
-    assert!(training_data.input_size == N_INPUTS, "Wrong inputs!");
-    assert!(training_data.label_size == N_OUTPUTS, "Wrong outputs!");
+    let shared_training_data = Arc::new(mnist_data::load_mnist_training());
+    assert!(shared_training_data.input_size == N_INPUTS, "Wrong inputs!");
+    assert!(shared_training_data.label_size == N_OUTPUTS, "Wrong outputs!");
 
-    let mut example_indices: Vec<_> = (0usize..training_data.examples_count).collect();
+    let mut example_indices: Vec<_> = (0usize..shared_training_data.examples_count).collect();
 
     let testing_data = mnist_data::load_mnist_testing();
     assert!(testing_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(testing_data.label_size == N_OUTPUTS, "Wrong outputs!");
 
     let (mut nn_parameters, mut nn_predictor, mut nn_trainer) = nn.as_parts();
-    let (job_sender, job_receiver) = channel();
+    let (job_sender, job_receiver): (Sender<(Vec<usize>, Arc<NetworkParameters>)>, Receiver<(Vec<usize>, Arc<NetworkParameters>)>) = channel();
     let (output_sender, output_receiver) = channel();
     let job_receiver = Arc::new(Mutex::new(job_receiver));
     let mut join_handles = Vec::new();
     for thread_no in 0..NUM_CPUS {
-        let nn_predictor = nn_predictor.clone();
-        let nn_trainer = nn_trainer.clone();
-        let training_data = training_data.clone();
+        println!("Starting thread {}", thread_no);
+        // Threadlocal working copies
+        let mut local_nn_predictor = nn_predictor.clone();
+        let mut local_nn_trainer = nn_trainer.clone();
+
+        // Shared immutable data
+        let shared_training_data = shared_training_data.clone();
+
+        // Shared channels
         let output_sender = output_sender.clone();
         let job_receiver = job_receiver.clone();
         let jh = thread::spawn(move || {
+            let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
             loop {
-                if let Ok((chunk, nn_params)) = job_receiver.lock().unwrap().recv() {
-                    // do stuff
+                // NOTE(vbo): non-lexical lifetimes would allow ommiting block here.
+                let next_job = { job_receiver.lock().unwrap().recv() };
+                if let Ok((chunk, nn_params)) = next_job {
+                    for example_index in chunk {
+                        let (input_data, label_data) = shared_training_data.slices_for_cursor(example_index);
+                        true_outputs.copy_from_slice(label_data); // TODO: no copy
+                        let outputs = local_nn_predictor.predict(&nn_params, input_data).clone();
+                        local_nn_trainer.backward_propagation(&nn_params, &local_nn_predictor, &true_outputs);
+                    }
+
                     drop(nn_params);
-                    output_sender.send(nn_trainer.clone());
+                    output_sender.send(local_nn_trainer.clone());
+                    local_nn_trainer.reset();
                 } else {
                     println!("Exiting child thread!");
                     break;
@@ -89,9 +103,10 @@ pub fn main_mnist(
         });
         join_handles.push(jh);
     }
+
     let mut hits = 0usize;
     let mut random_number_generator = rand::thread_rng();
-    let mut examples_processed = 0usize;
+    let mut batches_processed = 0usize;
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut total_error: f64 = 0.0;
@@ -108,24 +123,43 @@ pub fn main_mnist(
             // TODO: check small last batch
             let batch_chunks: Vec<_> = indices_batch.chunks(indices_batch.len()/NUM_CPUS).map(Vec::from).collect();
             let batch_chunks_no = batch_chunks.len();
+            timing.start("train_batch");
             for chunk in batch_chunks {
                 job_sender.send((chunk, shared_nn_parameters.clone()));
             }
 
             let mut output_no = 0;
             for output in output_receiver.iter() {
-                println!("Aggregate output");
+                nn_trainer.aggregate(&output);
                 output_no += 1;
                 if output_no == batch_chunks_no {
                     break;
                 }
             }
 
+            // TODO(lenny): Make sure we zero temporaries.
             if let Some(nn_parameters) = Arc::get_mut(&mut shared_nn_parameters) {
-                println!("Apply batch");
+                nn_trainer.apply_batch(nn_parameters);
             } else {
                 panic!("NN params should be freed after batch");
             }
+
+            timing.stop("train_batch");
+
+            if (batches_processed+1) % test_every_n == 0 {
+                println!(
+                    "Trained over {}k examples. Evaluation results: {}",
+                    batches_processed * network::BATCH_SIZE / 1000,
+                    evaluate(&shared_nn_parameters, &mut nn_predictor, &testing_data)
+                );
+                timing.dump_divided(batches_processed);
+            }
+
+            if !model_output_path.is_empty() && batches_processed % write_every_n == 0 {
+                shared_nn_parameters.write_to_file(&model_output_path);
+            }
+
+            batches_processed += 1;
         }
 
         /*
