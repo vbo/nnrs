@@ -1,8 +1,10 @@
-use std::fmt;
-use std::mem;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs::File;
+use std::mem;
+
 use serde_json;
+
 use math::Matrix;
 use math::Vector;
 
@@ -181,9 +183,12 @@ impl NetworkTrainer {
             res.rows
         );
 
-        for row in 0..activations.rows {
-            res.mem[row] =
-                2.0 * error.mem[row] * activations.mem[row] * (1.0 - activations.mem[row]);
+        for ((res_x, activations_x), error_x) in res.mem
+            .iter_mut()
+            .zip(activations.mem.iter())
+            .zip(error.mem.iter())
+        {
+            *res_x = 2.0 * error_x * activations_x * (1.0 - activations_x);
         }
     }
 
@@ -203,9 +208,13 @@ impl NetworkTrainer {
 
         for row in 0..res.rows {
             let row_start = row * res.cols;
+            let row_error_grad_prefix = unsafe { error_grad_prefix.mem.get_unchecked(row) };
+
             for col in 0..res.cols {
-                res.mem[row_start + col] +=
-                    error_grad_prefix.mem[row] * previous_activations.mem[col];
+                unsafe {
+                    *res.mem.get_unchecked_mut(row_start + col) +=
+                        row_error_grad_prefix * previous_activations.mem.get_unchecked(col);
+                }
             }
         }
     }
@@ -249,11 +258,9 @@ impl NetworkTrainer {
                 &predictor.get_layer_activations(dependency.id),
                 &mut training_dependency.weights_batch_pd,
             );
-            // TODO(lenny): fuse together transpose and add_dot_vec
-            let mut weights_t =
-                Matrix::new(dependency.weights.cols, dependency.weights.rows).init_with(0.0);
-            dependency.weights.transpose(&mut weights_t);
-            weights_t.add_dot_vec(&grad_prefix, &mut dep_layers[dep_index].error);
+            dependency
+                .weights
+                .transposed_add_dot_vec(&grad_prefix, &mut dep_layers[dep_index].error);
         }
     }
 }

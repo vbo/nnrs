@@ -24,6 +24,21 @@ impl Matrix {
         return Matrix::new(rows, cols);
     }
 
+    pub fn from_slice(rows: usize, cols: usize, content: &[f64]) -> Self {
+        assert!(
+            rows * cols == content.len(),
+            "Invalid dimensions from_slice: {}*{} != {}",
+            rows,
+            cols,
+            content.len()
+        );
+        return Self {
+            mem: content.to_vec(),
+            rows: rows,
+            cols: cols,
+        };
+    }
+
     pub fn init_with(mut self, val: f64) -> Self {
         assert!(
             self.mem.len() == 0,
@@ -37,8 +52,8 @@ impl Matrix {
     }
 
     pub fn fill_with(&mut self, val: f64) {
-        for i in 0..self.rows * self.cols {
-            self.mem[i] = val;
+        for e in self.mem.iter_mut() {
+            *e = val;
         }
     }
 
@@ -87,7 +102,10 @@ impl Matrix {
         for row in 0..res.rows {
             let mat_row_start = row * self.cols;
             for col in 0..self.cols {
-                res.mem[row] += self.mem[mat_row_start + col] * vec.mem[col];
+                unsafe {
+                    *res.mem.get_unchecked_mut(row) +=
+                        self.mem.get_unchecked(mat_row_start + col) * vec.mem.get_unchecked(col);
+                }
             }
         }
     }
@@ -104,8 +122,8 @@ impl Matrix {
             mat.cols
         );
 
-        for i in 0..self.rows * self.cols {
-            self.mem[i] -= mat.mem[i];
+        for (left, right) in self.mem.iter_mut().zip(mat.mem.iter()) {
+            *left -= right;
         }
     }
 
@@ -120,8 +138,8 @@ impl Matrix {
             mat.cols
         );
 
-        for i in 0..self.rows * self.cols {
-            self.mem[i] += mat.mem[i];
+        for (left, right) in self.mem.iter_mut().zip(mat.mem.iter()) {
+            *left += right;
         }
     }
 
@@ -129,8 +147,8 @@ impl Matrix {
     where
         F: Fn(f64) -> f64,
     {
-        for i in 0..self.rows * self.cols {
-            self.mem[i] = f(self.mem[i]);
+        for e in self.mem.iter_mut() {
+            *e = f(*e);
         }
     }
 
@@ -151,6 +169,28 @@ impl Matrix {
                 let res_row = source_col;
                 let source_val = self.mem[source_row_start + source_col];
                 res.mem[res_row * res.cols + res_col] = source_val;
+            }
+        }
+    }
+
+    pub fn transposed_add_dot_vec(&self, vec: &Vector, res: &mut Vector) {
+        assert!(
+            self.cols == res.rows && self.rows == vec.rows,
+            "Dimensions invalid for add product: \
+             Matrix {}x{}.T * Vector {}x1 = Vector {}x1",
+            self.rows,
+            self.cols,
+            vec.rows,
+            res.rows
+        );
+
+        for mat_row in 0..self.rows {
+            let mat_row_start = mat_row * self.cols;
+            for row in 0..res.rows {
+                unsafe {
+                    *res.mem.get_unchecked_mut(row) +=
+                        self.mem.get_unchecked(mat_row_start + row) * vec.mem.get_unchecked(mat_row)
+                };
             }
         }
     }
@@ -195,6 +235,13 @@ impl Vector {
         return Self {
             mem: Vec::with_capacity(rows),
             rows: rows,
+        };
+    }
+
+    pub fn from_slice(content: &[f64]) -> Self {
+        return Self {
+            mem: content.to_vec(),
+            rows: content.len(),
         };
     }
 
@@ -329,5 +376,54 @@ impl Vector {
         }
 
         return (max_i, max);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_dot_vec() {
+        /*
+         * [1, 2, 3]
+         * [4, 5, 6]
+         */
+        let matrix = Matrix::from_slice(2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let vector = Vector::from_slice(&[2.0, 3.0, 4.0]);
+        let mut result = Vector::new(2).init_with(0.0);
+        matrix.add_dot_vec(&vector, &mut result);
+        assert_eq!(result.mem, &[20.0, 47.0]);
+    }
+
+    #[test]
+    fn transpose() {
+        /*
+         * [1, 2, 3]
+         * [4, 5, 6]
+         */
+        let matrix = Matrix::from_slice(2, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let mut result = Matrix::new(3, 2).init_with(0.0);
+        matrix.transpose(&mut result);
+        /*
+         * [1, 4]
+         * [2, 5]
+         * [3, 6]
+         */
+        assert_eq!(result.mem, &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+    }
+
+    #[test]
+    fn transpose_add_dot_vec() {
+        /*
+         * [1, 4]
+         * [2, 5]
+         * [3, 6]
+         */
+        let matrix = Matrix::from_slice(3, 2, &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+        let vector = Vector::from_slice(&[2.0, 3.0, 4.0]);
+        let mut result = Vector::new(2).init_with(0.0);
+        matrix.transposed_add_dot_vec(&vector, &mut result);
+        assert_eq!(result.mem, &[20.0, 47.0]);
     }
 }

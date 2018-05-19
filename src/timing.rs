@@ -1,10 +1,10 @@
-use std::time;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::BTreeMap;
 use std::fmt;
+use std::time;
 
 pub struct Timing {
-    sections: HashMap<String, SectionTimer>,
+    sections: BTreeMap<String, SectionTimer>,
 }
 
 struct SectionTimer {
@@ -15,7 +15,7 @@ struct SectionTimer {
 impl Timing {
     pub fn new() -> Self {
         Timing {
-            sections: HashMap::new(),
+            sections: BTreeMap::new(),
         }
     }
 
@@ -52,6 +52,17 @@ impl Timing {
 
     pub fn dump(&self) {
         println!("{}", self);
+    }
+
+    pub fn dump_divided(&self, divisor: usize) {
+        println!("=== Timing / {} ===", divisor);
+        for (name, timer) in &self.sections {
+            println!(
+                "{}: {}ns",
+                name,
+                duration_as_total_nanos(&timer.duration) / divisor as u64
+            );
+        }
     }
 }
 
