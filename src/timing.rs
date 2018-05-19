@@ -58,9 +58,9 @@ impl Timing {
         println!("=== Timing / {} ===", divisor);
         for (name, timer) in &self.sections {
             println!(
-                "{}: {}ns",
+                "{}: {}ms",
                 name,
-                duration_as_total_nanos(&timer.duration) / divisor as u64
+                duration_as_total_nanos(&timer.duration) / divisor as u64 / 1_000_000
             );
         }
     }
