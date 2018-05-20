@@ -62,6 +62,8 @@ pub fn main_mnist(
     assert!(testing_data.input_size == N_INPUTS, "Wrong inputs!");
     assert!(testing_data.label_size == N_OUTPUTS, "Wrong outputs!");
 
+    //TODO(vbo): This will be used again in snake and other applications, re-use the code when
+    //possible.
     let (mut nn_parameters, mut nn_predictor, mut nn_trainer) = nn.as_parts();
     let (job_sender, job_receiver): (Sender<(Vec<usize>, Arc<NetworkParameters>)>, Receiver<(Vec<usize>, Arc<NetworkParameters>)>) = channel();
     let (output_sender, output_receiver) = channel();
