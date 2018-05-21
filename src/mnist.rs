@@ -11,7 +11,7 @@ use network;
 use network::{Network, NetworkParameters, NetworkPredictor, NetworkTrainer};
 
 use mnist_data;
-use mnist_data::Dataset;
+use mnist_data::{Dataset, MnistDataset};
 
 use math;
 use math::Matrix;
@@ -53,14 +53,14 @@ pub fn main_mnist(
     }
 
     let shared_training_data = Arc::new(mnist_data::load_mnist_training());
-    assert!(shared_training_data.input_size == N_INPUTS, "Wrong inputs!");
-    assert!(shared_training_data.label_size == N_OUTPUTS, "Wrong outputs!");
+    assert!(shared_training_data.input_size() == N_INPUTS, "Wrong inputs!");
+    assert!(shared_training_data.label_size() == N_OUTPUTS, "Wrong outputs!");
 
-    let mut example_indices: Vec<_> = (0usize..shared_training_data.examples_count).collect();
+    let mut example_indices: Vec<_> = (0usize..shared_training_data.examples_count()).collect();
 
     let testing_data = mnist_data::load_mnist_testing();
-    assert!(testing_data.input_size == N_INPUTS, "Wrong inputs!");
-    assert!(testing_data.label_size == N_OUTPUTS, "Wrong outputs!");
+    assert!(testing_data.input_size() == N_INPUTS, "Wrong inputs!");
+    assert!(testing_data.label_size() == N_OUTPUTS, "Wrong outputs!");
 
     //TODO(vbo): This will be used again in snake and other applications, re-use the code when
     //possible.
@@ -175,72 +175,6 @@ pub fn main_mnist(
 
             batches_processed += 1;
         }
-
-        /*
-        let mut current_examples_cursor = 0usize;
-        while current_examples_cursor < training_data.examples_count {
-            timing.start("overall");
-            let (input_data, label_data) = training_data.slices_for_cursor(current_examples_cursor);
-            true_outputs.copy_from_slice(label_data);
-
-            timing.start("overall.predict");
-            let outputs = nn_predictor.predict(&nn_parameters, input_data).clone();
-            timing.stop("overall.predict");
-            timing.start("overall.backward_propagation");
-            nn_trainer.backward_propagation(&nn_parameters, &nn_predictor, &true_outputs);
-            timing.stop("overall.backward_propagation");
-
-            // Update accuracy metrics
-            true_outputs.sub(&outputs, &mut error);
-            total_error += error.calc_magnitude();
-            let (max_i, _) = outputs.max_component();
-            let (tmax_i, _) = true_outputs.max_component();
-            if max_i == tmax_i {
-                hits += 1;
-            }
-
-            if (current_examples_cursor + 1) % network::BATCH_SIZE == 0 {
-                timing.start("overall.apply_batch");
-                nn_trainer.apply_batch(&mut nn_parameters);
-                timing.stop("overall.apply_batch");
-            }
-
-            timing.stop("overall");
-
-            if (examples_processed + 1) % log_every_n == 0 {
-                println!(
-                    "error over last {}: {:8.4}",
-                    log_every_n,
-                    total_error / log_every_n as f64
-                );
-                println!("hits {}%", (hits as f64) * 100.0 / (log_every_n as f64));
-                timing.dump_divided(examples_processed);
-                total_error = 0.0;
-                hits = 0;
-                total_elapsed_secs = 0.0;
-                overall_stopwatch = time::Instant::now();
-
-                if examples_processed % (log_every_n * 10) == 0 {
-                    println!("True: {}, Outputs: {}", true_outputs, outputs);
-                }
-            }
-
-            if examples_processed % test_every_n == 0 {
-                println!(
-                    "Trained over {}k examples. Evaluation results: {}",
-                    examples_processed / 1000,
-                    evaluate(&nn_parameters, &mut nn_predictor, &testing_data)
-                );
-            }
-
-            if !model_output_path.is_empty() && examples_processed % write_every_n == 0 {
-                nn_parameters.write_to_file(&model_output_path);
-            }
-
-            examples_processed += 1;
-            current_examples_cursor += 1;
-        }
-        */
     }
 
     println!("Main done!");
@@ -263,13 +197,13 @@ impl fmt::Display for EvaluationResult {
     }
 }
 
-fn evaluate(nn_parameters: &NetworkParameters, nn_predictor: &mut NetworkPredictor, test_dataset: &Dataset) -> EvaluationResult {
+fn evaluate(nn_parameters: &NetworkParameters, nn_predictor: &mut NetworkPredictor, test_dataset: &MnistDataset) -> EvaluationResult {
     let mut hits = 0usize;
     let mut total_error = 0.0f64;
     let mut current_examples_cursor = 0usize;
     let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
     let mut error = Vector::new(N_OUTPUTS).init_with(0.0);
-    while current_examples_cursor < test_dataset.examples_count {
+    while current_examples_cursor < test_dataset.examples_count() {
         let (input_data, label_data) = test_dataset.slices_for_cursor(current_examples_cursor);
         true_outputs.copy_from_slice(label_data);
         let outputs = nn_predictor.predict(nn_parameters, input_data).clone();
@@ -285,7 +219,7 @@ fn evaluate(nn_parameters: &NetworkParameters, nn_predictor: &mut NetworkPredict
     }
 
     EvaluationResult {
-        hits_ratio: hits as f64 / test_dataset.examples_count as f64,
-        avg_error: total_error / test_dataset.examples_count as f64,
+        hits_ratio: hits as f64 / test_dataset.examples_count() as f64,
+        avg_error: total_error / test_dataset.examples_count() as f64,
     }
 }

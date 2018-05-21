@@ -4,16 +4,23 @@ use self::byteorder::{BigEndian, ByteOrder};
 use std::fs::File;
 use std::io::Read;
 
-pub struct Dataset {
-    pub input_mem: Vec<f64>,
-    pub label_mem: Vec<f64>,
-    pub examples_count: usize,
-    pub input_size: usize,
-    pub label_size: usize,
+pub struct MnistDataset {
+    input_mem: Vec<f64>,
+    label_mem: Vec<f64>,
+    examples_count: usize,
+    input_size: usize,
+    label_size: usize,
 }
 
-impl Dataset {
-    pub fn slices_for_cursor(&self, current_example_index: usize) -> (&[f64], &[f64]) {
+pub trait Dataset {
+    fn slices_for_cursor(&self, current_example_index: usize) -> (&[f64], &[f64]);
+    fn examples_count(&self) -> usize;
+    fn input_size(&self) -> usize;
+    fn label_size(&self) -> usize;
+}
+
+impl Dataset for MnistDataset {
+    fn slices_for_cursor(&self, current_example_index: usize) -> (&[f64], &[f64]) {
         let input_data_offset = current_example_index * self.input_size;
         let input_data_end = input_data_offset + self.input_size;
         let input_data = &self.input_mem[input_data_offset..input_data_end];
@@ -24,20 +31,24 @@ impl Dataset {
 
         return (input_data, label_data);
     }
+
+    fn examples_count(&self) -> usize { self.examples_count }
+    fn input_size(&self) -> usize { self.input_size }
+    fn label_size(&self) -> usize { self.label_size }
 }
 
-pub fn load_mnist_testing() -> Dataset {
+pub fn load_mnist_testing() -> MnistDataset {
     load_mnist("data/t10k-images-idx3-ubyte", "data/t10k-labels-idx1-ubyte")
 }
 
-pub fn load_mnist_training() -> Dataset {
+pub fn load_mnist_training() -> MnistDataset {
     load_mnist(
         "data/train-images-idx3-ubyte",
         "data/train-labels-idx1-ubyte",
     )
 }
 
-pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> Dataset {
+pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> MnistDataset {
     let mut images_file = File::open(images_file_path).unwrap();
 
     let mut header_buf = [0u8; 16];
@@ -98,7 +109,7 @@ pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> Dataset {
         }
     }
 
-    let res = Dataset {
+    let res = MnistDataset {
         input_mem: images_data,
         label_mem: labels_data,
         examples_count: images_count,
