@@ -73,7 +73,7 @@ pub fn main_mnist(
         println!("Starting thread {}", thread_no);
         // Threadlocal working copies
         let mut local_nn_predictor = nn_predictor.clone();
-        let mut local_nn_trainer = nn_trainer.clone();
+        let mut local_nn_trainer = Arc::new(Mutex::new(nn_trainer.clone()));
 
         // Shared immutable data
         let shared_training_data = shared_training_data.clone();
@@ -83,20 +83,29 @@ pub fn main_mnist(
         let job_receiver = job_receiver.clone();
         let jh = thread::spawn(move || {
             let mut true_outputs = Vector::new(N_OUTPUTS).init_with(0.0);
+            let mut jobs_done = 0;
             loop {
                 // NOTE(vbo): non-lexical lifetimes would allow ommiting block here.
                 let next_job = { job_receiver.lock().unwrap().recv() };
                 if let Ok((chunk, nn_params)) = next_job {
-                    for example_index in chunk {
-                        let (input_data, label_data) = shared_training_data.slices_for_cursor(example_index);
-                        true_outputs.copy_from_slice(label_data); // TODO: no copy
-                        let outputs = local_nn_predictor.predict(&nn_params, input_data).clone();
-                        local_nn_trainer.backward_propagation(&nn_params, &local_nn_predictor, &true_outputs);
+                    if jobs_done % log_every_n == 0 {
+                        println!("Thread {}: {} jobs done", thread_no, jobs_done);
+                    }
+
+                    {
+                        let mut local_nn_trainer = local_nn_trainer.lock().unwrap();
+                        local_nn_trainer.reset();
+                        for example_index in chunk {
+                            let (input_data, label_data) = shared_training_data.slices_for_cursor(example_index);
+                            true_outputs.copy_from_slice(label_data); // TODO: no copy
+                            let outputs = local_nn_predictor.predict(&nn_params, input_data).clone();
+                            local_nn_trainer.backward_propagation(&nn_params, &local_nn_predictor, &true_outputs);
+                        }
                     }
 
                     drop(nn_params);
                     output_sender.send(local_nn_trainer.clone());
-                    local_nn_trainer.reset();
+                    jobs_done += 1;
                 } else {
                     println!("Exiting child thread!");
                     break;
@@ -116,7 +125,8 @@ pub fn main_mnist(
     let mut overall_stopwatch = time::Instant::now();
     let mut shared_nn_parameters = Arc::new(nn_parameters);
     let mut timing = Timing::new();
-    for _ in 1..NUM_EPOCHS + 1 {
+    for epoch_no in 0..NUM_EPOCHS {
+        println!("Starting epoch {}.", epoch_no);
         // Randomize example order
         random_number_generator.shuffle(&mut example_indices.as_mut_slice());
         let indices_batches: Vec<_> = example_indices.chunks(network::BATCH_SIZE).map(Vec::from).collect();
@@ -131,15 +141,17 @@ pub fn main_mnist(
             }
 
             let mut output_no = 0;
-            for output in output_receiver.iter() {
-                nn_trainer.aggregate(&output);
+            for output_nn_trainer in output_receiver.iter() {
+                {
+                    let mut output_nn_trainer = output_nn_trainer.lock().unwrap();
+                    nn_trainer.aggregate(&output_nn_trainer);
+                }
                 output_no += 1;
                 if output_no == batch_chunks_no {
                     break;
                 }
             }
 
-            // TODO(lenny): Make sure we zero temporaries.
             if let Some(nn_parameters) = Arc::get_mut(&mut shared_nn_parameters) {
                 nn_trainer.apply_batch(nn_parameters);
             } else {
