@@ -3,20 +3,14 @@ extern crate byteorder;
 use self::byteorder::{BigEndian, ByteOrder};
 use std::fs::File;
 use std::io::Read;
+use training_data::Dataset;
 
-pub struct MnistDataset {
+struct MnistDataset {
     input_mem: Vec<f64>,
     label_mem: Vec<f64>,
     examples_count: usize,
     input_size: usize,
     label_size: usize,
-}
-
-pub trait Dataset {
-    fn slices_for_cursor(&self, current_example_index: usize) -> (&[f64], &[f64]);
-    fn examples_count(&self) -> usize;
-    fn input_size(&self) -> usize;
-    fn label_size(&self) -> usize;
 }
 
 impl Dataset for MnistDataset {
@@ -32,23 +26,29 @@ impl Dataset for MnistDataset {
         return (input_data, label_data);
     }
 
-    fn examples_count(&self) -> usize { self.examples_count }
-    fn input_size(&self) -> usize { self.input_size }
-    fn label_size(&self) -> usize { self.label_size }
+    fn examples_count(&self) -> usize {
+        self.examples_count
+    }
+    fn input_size(&self) -> usize {
+        self.input_size
+    }
+    fn label_size(&self) -> usize {
+        self.label_size
+    }
 }
 
-pub fn load_mnist_testing() -> MnistDataset {
+pub fn load_mnist_testing() -> impl Dataset {
     load_mnist("data/t10k-images-idx3-ubyte", "data/t10k-labels-idx1-ubyte")
 }
 
-pub fn load_mnist_training() -> MnistDataset {
+pub fn load_mnist_training() -> impl Dataset {
     load_mnist(
         "data/train-images-idx3-ubyte",
         "data/train-labels-idx1-ubyte",
     )
 }
 
-pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> MnistDataset {
+pub fn load_mnist(images_file_path: &str, labels_file_path: &str) -> impl Dataset {
     let mut images_file = File::open(images_file_path).unwrap();
 
     let mut header_buf = [0u8; 16];

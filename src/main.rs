@@ -23,9 +23,11 @@ mod math;
 mod mnist;
 mod mnist_data;
 mod network;
+mod parallel_trainer;
 mod snake;
 mod snake_nn;
 mod timing;
+mod training_data;
 
 fn main() {
     let yaml = load_yaml!("cli.yml");

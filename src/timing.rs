@@ -1,5 +1,5 @@
-use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
+use std::collections::hash_map::Entry;
 use std::fmt;
 use std::time;
 

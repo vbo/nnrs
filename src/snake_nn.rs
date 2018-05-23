@@ -2,23 +2,23 @@
 use math::*;
 use network;
 use rand;
-use rand::distributions::{IndependentSample, Range};
 use rand::Rng;
+use rand::distributions::{IndependentSample, Range};
 use serde_json;
 use snake::*;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::prelude::*;
-use std::io::stdout;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::io::prelude::*;
+use std::io::stdout;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
-use timing::duration_as_total_nanos;
 use timing::Timing;
+use timing::duration_as_total_nanos;
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 const FORGET_RATE: f64 = 0.2;

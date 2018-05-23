@@ -1,5 +1,5 @@
-use rand::distributions::{IndependentSample, Range};
 use rand::Rng;
+use rand::distributions::{IndependentSample, Range};
 use std::io::prelude::*;
 
 use rand;

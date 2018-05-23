@@ -154,10 +154,17 @@ impl NetworkTrainer {
     }
 
     pub fn aggregate(&mut self, other: &Self) {
-        assert!(other.layers.len() == self.layers.len(), "Invalid trainer for aggregation.");
+        assert!(
+            other.layers.len() == self.layers.len(),
+            "Invalid trainer for aggregation."
+        );
         for (other_layer, our_layer) in other.layers.iter().zip(self.layers.iter_mut()) {
             our_layer.bias_batch_pd += other_layer.bias_batch_pd;
-            for (other_dep, our_dep) in other_layer.dependencies.iter().zip(our_layer.dependencies.iter_mut()) {
+            for (other_dep, our_dep) in other_layer
+                .dependencies
+                .iter()
+                .zip(our_layer.dependencies.iter_mut())
+            {
                 our_dep.weights_batch_pd.add(&other_dep.weights_batch_pd);
             }
         }
@@ -407,8 +414,12 @@ impl Network {
     }
 
     pub fn as_parts(self) -> (NetworkParameters, NetworkPredictor, NetworkTrainer) {
-        let Self { parameters, predictor, trainer } = self;
-        ( parameters, predictor, trainer )
+        let Self {
+            parameters,
+            predictor,
+            trainer,
+        } = self;
+        (parameters, predictor, trainer)
     }
 
     pub fn input_layer(&self) -> LayerID {
