@@ -1,6 +1,7 @@
 #![feature(test)]
 use math::*;
 use network;
+use network::{Network, NetworkParameters, NetworkPredictor};
 use rand;
 use rand::Rng;
 use rand::distributions::{IndependentSample, Range};
@@ -19,6 +20,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use timing::Timing;
 use timing::duration_as_total_nanos;
+use training_data::Dataset;
+use parallel_trainer::{num_threads, ParallelTrainer};
 
 const SLEEP_INTERVAL_MS: u32 = 200;
 const FORGET_RATE: f64 = 0.2;
@@ -55,58 +58,56 @@ pub fn snake_train(
     println!("Starting model loaded from {}", training_data_path);
 
     //TODO(vbo): training_data_max should be a buffer here, we still need to read all the file.
-    let training_data = read_training_data_from_file(training_data_path, training_data_max);
-    let mut training_data_indices: Vec<usize> = (0..training_data.len()).collect();
+    let training_data = read_dataset_from_file(training_data_path, training_data_max);
+    let mut example_indices: Vec<usize> = (0..training_data.examples_count()).collect();
     println!(
         "Training data working set loaded from {}",
         training_data_path
     );
 
-    let mut examples_processed = 0;
+    let mut parallel_trainer = ParallelTrainer::new(training_data, nn);
+
+    let mut batches_processed = 0;
     let mut random_number_generator = rand::thread_rng();
     let mut timing = Timing::new();
-    for _ in 1..num_epochs + 1 {
-        random_number_generator.shuffle(&mut training_data_indices.as_mut_slice());
-        for training_data_index in &training_data_indices {
-            let sample_step = &training_data[*training_data_index];
+    for epoch_no in 0..num_epochs {
+        random_number_generator.shuffle(&mut example_indices.as_mut_slice());
+        let indices_batches: Vec<_> = example_indices
+            .chunks(network::BATCH_SIZE)
+            .map(Vec::from)
+            .collect();
 
-            timing.start("teach_nn");
-            teach_nn(
-                &mut nn,
-                &sample_step.state,
-                sample_step.action,
-                sample_step.state.score,
-            );
-            timing.stop("teach_nn");
+        for indices_batch in &indices_batches {
+            let batch_chunks: Vec<_> = indices_batch
+                .chunks(indices_batch.len() / num_threads())
+                .map(Vec::from)
+                .collect();
+            timing.start("train_batch");
+            parallel_trainer.process_batch(batch_chunks);
+            timing.stop("train_batch");
 
-            examples_processed += 1;
-            // TODO(vbo): BATCH_SIZE should be app, not lib part.
-            if examples_processed % network::BATCH_SIZE == 0 {
-                timing.start("apply_batch");
-                nn.apply_batch();
-                timing.stop("apply_batch");
+            if (batches_processed + 1) % write_every_n == 0 {
+                let (params, predictor, _) = parallel_trainer.borrow_network_parts();
+                params.write_to_file(&model_output_path);
             }
 
-            if examples_processed % write_every_n == 0 {
-                timing.start("write_to_file");
-                nn.write_to_file(&model_output_path);
-                timing.stop("write_to_file");
-                println!("Model saved");
-            }
-
-            if examples_processed % log_every_n == 0 {
-                println!("Examples processed: {}", examples_processed);
+            if (batches_processed + 1) % log_every_n == 0 {
+                let (params, predictor, _) = parallel_trainer.borrow_network_parts();
+                println!("Batches processed: {}", batches_processed);
                 timing.start("evaluate_on_random_games");
-                evaluate_on_random_games(&mut nn, 1000);
+                evaluate_on_random_games(params, predictor, 1000);
                 timing.stop("evaluate_on_random_games");
 
-                timing.dump_divided(examples_processed);
+                timing.dump_divided(batches_processed);
             }
+
+            batches_processed += 1;
         }
     }
 
-    timing.dump_divided(examples_processed);
-    nn.write_to_file(&model_output_path);
+    timing.dump_divided(batches_processed);
+    let (params, predictor, _) = parallel_trainer.borrow_network_parts();
+    params.write_to_file(&model_output_path);
     println!("Final model saved");
 }
 
@@ -117,7 +118,7 @@ pub fn snake_gen(model_path: &str, training_data_path: &str, save_n: usize) {
     let mut timing = Timing::new();
     timing.start("snake_gen");
     let mut join_handles = Vec::new();
-    let cpus = 7;
+    let cpus = num_threads();
     for thread_no in 0..cpus {
         let mut thread_nn = nn.clone();
         let thread_out_path = training_data_path.to_owned();
@@ -176,8 +177,17 @@ pub fn snake_demo(model_path: &str, games_to_play: usize, visualize: bool) {
         }
         let mut visited = HashSet::new();
         while !done {
-            let (input, is_optimal) =
-                get_next_input_with_strat(&mut nn, &mut visited, &state, 0.0, &mut rng, visualize);
+            let (input, is_optimal) = {
+                let (nn_params, nn_predictor, _) = nn.borrow_parts();
+                get_next_input_with_strat(
+                    nn_params,
+                    nn_predictor,
+                    &mut visited,
+                    &state,
+                    0.0,
+                    &mut rng,
+                    visualize)
+            };
             if !is_optimal {
                 panic!("Same state reached.");
             }
@@ -237,14 +247,18 @@ fn play_random_game(nn: &mut network::Network, mut state: GameState) -> Vec<Sess
     let mut visited = HashSet::new();
     let mut session = Vec::new();
     while !done {
-        let (input, is_optimal) = get_next_input_with_strat(
-            nn,
-            &mut visited,
-            &state,
-            RANDOM_MOVE_PROBABILITY,
-            &mut rng,
-            false,
-        );
+        let (input, is_optimal) = {
+            let (nn_params, nn_predictor, _) = nn.borrow_parts();
+            get_next_input_with_strat(
+                nn_params,
+                nn_predictor,
+                &mut visited,
+                &state,
+                RANDOM_MOVE_PROBABILITY,
+                &mut rng,
+                false,
+            )
+        };
 
         session.push(SessionStep {
             state: state.clone(),
@@ -263,7 +277,11 @@ fn play_random_game(nn: &mut network::Network, mut state: GameState) -> Vec<Sess
     return session;
 }
 
-fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
+fn evaluate_on_random_games(
+    nn_parameters: &NetworkParameters,
+    nn_predictor: &mut NetworkPredictor,
+    count: usize,
+) {
     let mut sessions_processed = 0;
     let mut sum_score: f64 = 0.0;
     let mut loops = 0;
@@ -278,7 +296,7 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
         let mut visited = HashSet::new();
         while !done {
             let (input, is_optimal) =
-                get_next_input_with_strat(nn, &mut visited, &state, 0.0, &mut rng, false);
+                get_next_input_with_strat(nn_parameters, nn_predictor, &mut visited, &state, 0.0, &mut rng, false);
 
             if !is_optimal {
                 loops += 1;
@@ -307,7 +325,8 @@ fn evaluate_on_random_games(nn: &mut network::Network, count: usize) {
 }
 
 fn get_next_input_with_strat<R: rand::Rng>(
-    nn: &mut network::Network,
+    nn_params: &NetworkParameters,
+    nn_predictor: &mut NetworkPredictor,
     visited: &mut HashSet<u64>,
     state: &GameState,
     random_move_prob: f64,
@@ -325,7 +344,7 @@ fn get_next_input_with_strat<R: rand::Rng>(
     let mut snake_inputs_gains = vec![0.0; possible_snake_inputs.len()];
     for (i, snake_input) in possible_snake_inputs.iter().enumerate() {
         set_snake_input_in_network_inputs(&mut inputs, *snake_input);
-        let outputs = nn.predict(inputs.as_slice());
+        let outputs = nn_predictor.predict(nn_params, inputs.as_slice());
         assert!(outputs.rows == 1);
         snake_inputs_gains[i] = outputs.mem[0];
         if visualize {
@@ -377,6 +396,76 @@ fn teach_nn(
     let mut true_output_vec = Vector::new(1).init_with(0.0);
     true_output_vec.mem[0] = true_output;
     nn.backward_propagation(&true_output_vec);
+}
+
+struct SnakeDataset {
+    examples_count: usize,
+    input_mem: Vec<f64>,
+    label_mem: Vec<f64>,
+}
+
+impl Dataset for SnakeDataset {
+    fn slices_for_cursor(&self, current_example_index: usize) -> (&[f64], &[f64]) {
+        let input_data_offset = current_example_index * self.input_size();
+        let input_data_end = input_data_offset + self.input_size();
+        let input_data = &self.input_mem[input_data_offset..input_data_end];
+
+        let label_data_offset = current_example_index * self.label_size();
+        let label_data_end = label_data_offset + self.label_size();
+        let label_data = &self.label_mem[label_data_offset..label_data_end];
+
+        return (input_data, label_data);
+    }
+
+    fn examples_count(&self) -> usize {
+        self.examples_count
+    }
+
+    fn input_size(&self) -> usize {
+        N_INPUTS
+    }
+
+    fn label_size(&self) -> usize {
+        1
+    }
+}
+
+fn read_dataset_from_file(path: &str, count: usize) -> impl Dataset {
+    let session_steps = read_training_data_from_file(path, count);
+    let examples_count = session_steps.len();
+    let input_mem_size = examples_count * N_INPUTS;
+    let mut input_mem = vec![0.0f64; input_mem_size];
+    let mut label_mem = vec![0.0f64; examples_count];
+
+    {
+        let mut session_offset = 0;
+        let input_mem_slice = input_mem.as_mut_slice();
+        for (session_no, session_step) in session_steps.iter().enumerate() {
+            let input_mem_slice = &mut input_mem_slice[session_offset..session_offset+N_INPUTS];
+            for (i, tile) in session_step.state.map.tiles().iter().enumerate() {
+                let offset = *tile as usize;
+                // [b11, f11, ..,
+                //  b12, f12, ..,
+                //  bN1, fN1, ..,
+                //  bNM, fNM, ..,
+                //  i1, i2, .., iK]
+                input_mem_slice[SNAKE_TILE_SIZE * i + offset] = 1.0;
+            }
+
+            let action_offset = session_step.action as usize;
+            input_mem_slice[N_INPUTS - 1 - action_offset] = 1.0;
+
+            label_mem[session_no] = session_step.state.score;
+
+            session_offset += N_INPUTS;
+        }
+    }
+
+    SnakeDataset {
+        examples_count,
+        input_mem,
+        label_mem,
+    }
 }
 
 fn read_training_data_from_file(path: &str, count: usize) -> Vec<SessionStep> {

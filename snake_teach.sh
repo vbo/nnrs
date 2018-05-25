@@ -3,7 +3,7 @@
 input_id=$1
 iter_num=1000
 sessions_per_iter=10000
-write_every_n=$((100*$sessions_per_iter))
+write_every_n=1000
 num_epochs=100
 rust_execute="time env RUSTFLAGS=-Awarnings RUST_BACKTRACE=1 cargo run --release --"
 

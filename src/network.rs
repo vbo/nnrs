@@ -8,8 +8,8 @@ use serde_json;
 use math::Matrix;
 use math::Vector;
 
-const LEARNING_RATE: f64 = 0.8;
-pub const BATCH_SIZE: usize = 1000;
+const LEARNING_RATE: f64 = 1.8;
+pub const BATCH_SIZE: usize = 10000;
 
 #[derive(Clone)]
 pub struct Network {
@@ -420,6 +420,10 @@ impl Network {
             trainer,
         } = self;
         (parameters, predictor, trainer)
+    }
+
+    pub fn borrow_parts(&mut self) -> (&mut NetworkParameters, &mut NetworkPredictor, &mut NetworkTrainer) {
+        (&mut self.parameters, &mut self.predictor, &mut self.trainer)
     }
 
     pub fn input_layer(&self) -> LayerID {

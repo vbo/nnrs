@@ -9,6 +9,10 @@ use network::*;
 use timing::Timing;
 use training_data::Dataset;
 
+pub fn num_threads() -> usize {
+    num_cpus::get()
+}
+
 struct TrainingJob {
     examples_indices: Vec<usize>,
     network_parameters: Arc<NetworkParameters>,
@@ -38,8 +42,8 @@ impl<D: Dataset> ParallelTrainer<D> {
         let job_receiver = Arc::new(Mutex::new(job_receiver));
         let mut join_handles = Vec::new();
 
-        let num_cpus = num_cpus::get();
-        for thread_no in 0..num_cpus {
+        let num_threads = num_threads();
+        for thread_no in 0..num_threads {
             // Threadlocal working copies
             let mut local_nn_predictor = nn_predictor.clone();
             let mut local_nn_trainer = Arc::new(Mutex::new(nn_trainer.clone()));

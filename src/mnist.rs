@@ -7,7 +7,7 @@ use rand::Rng;
 use network;
 use network::{Network, NetworkParameters, NetworkPredictor};
 
-use parallel_trainer::ParallelTrainer;
+use parallel_trainer::{num_threads, ParallelTrainer};
 use training_data::Dataset;
 
 use mnist_data;
@@ -26,8 +26,6 @@ const N_OUTPUTS: usize = 10;
 
 const NUM_EPOCHS: usize = 1000;
 const NANOS_IN_SECOND: u64 = 1_000_000_000;
-
-const NUM_CPUS: usize = 4;
 
 pub fn main_mnist(
     model_input_path: &str,
@@ -79,7 +77,7 @@ pub fn main_mnist(
         for indices_batch in &indices_batches {
             // TODO: check small last batch
             let batch_chunks: Vec<_> = indices_batch
-                .chunks(indices_batch.len() / NUM_CPUS)
+                .chunks(indices_batch.len() / num_threads())
                 .map(Vec::from)
                 .collect();
             timing.start("train_batch");
